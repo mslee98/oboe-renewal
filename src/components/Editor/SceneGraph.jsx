@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { convertSceneToGraphData, toggleNodeVisibility, findNodeById } from '../../utils/sceneUtils';
 
-const SceneGraph = ({ sceneData, onNodeSelect, selectedNode, originalScene }) => {
+const SceneGraph = ({ sceneData, onNodeSelect, selectedNode, onVisibilityToggle }) => {
     const [expandedNodes, setExpandedNodes] = useState(new Set());
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -20,9 +19,7 @@ const SceneGraph = ({ sceneData, onNodeSelect, selectedNode, originalScene }) =>
     };
 
     const handleVisibilityToggle = (nodeId, visible) => {
-        if (originalScene) {
-            toggleNodeVisibility(originalScene, nodeId, visible);
-        }
+        onVisibilityToggle?.(nodeId, visible);
     };
 
     const renderNode = (node, level = 0) => {
@@ -167,17 +164,17 @@ const SceneGraph = ({ sceneData, onNodeSelect, selectedNode, originalScene }) =>
         );
     };
 
-    // Three.js Scene 객체를 씬 그래프 데이터로 변환
-    const graphData = sceneData ? convertSceneToGraphData(sceneData) : [];
+    // sceneData가 null이거나 배열이 아닐 때 빈 배열 반환
+    const safeSceneData = Array.isArray(sceneData) ? sceneData : [];
     
     const filteredSceneData = searchTerm
-        ? filterSceneData(graphData, searchTerm)
-        : graphData;
+        ? filterSceneData(safeSceneData, searchTerm)
+        : safeSceneData;
 
     return (
         <div className="h-full flex flex-col">
             {/* 검색 바 */}
-            <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+            <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -195,16 +192,16 @@ const SceneGraph = ({ sceneData, onNodeSelect, selectedNode, originalScene }) =>
             </div>
 
             {/* 필터 및 추가 버튼 */}
-            <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
                 <div className="flex items-center space-x-2">
                     <button className="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.707A1 1 0 013 7V4z" />
                         </svg>
                     </button>
-                    <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {filteredSceneData.length} items
+                    </span>
                 </div>
                 <button className="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -213,20 +210,15 @@ const SceneGraph = ({ sceneData, onNodeSelect, selectedNode, originalScene }) =>
                 </button>
             </div>
 
-            {/* 씬 그래프 목록 */}
+            {/* 씬 그래프 트리 */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <div className="p-2">
-                    {filteredSceneData.length > 0 ? (
-                        filteredSceneData.map((node) => renderNode(node))
-                    ) : (
-                        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                            <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                            </svg>
-                            <p className="text-sm">No scene data available</p>
-                        </div>
-                    )}
-                </div>
+                {filteredSceneData.length > 0 ? (
+                    filteredSceneData.map((node) => renderNode(node))
+                ) : (
+                    <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+                        {searchTerm ? 'No matching items found' : 'No scene data available'}
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -236,18 +228,18 @@ const SceneGraph = ({ sceneData, onNodeSelect, selectedNode, originalScene }) =>
 const filterSceneData = (sceneData, searchTerm) => {
     const filterNode = (node) => {
         const matchesSearch = node.name.toLowerCase().includes(searchTerm.toLowerCase());
-        const hasMatchingChildren = node.children?.some(filterNode);
+        const hasMatchingChildren = node.children && node.children.some(filterNode);
         
         if (matchesSearch || hasMatchingChildren) {
             return {
                 ...node,
-                children: node.children?.filter(filterNode)
+                children: node.children ? node.children.filter(filterNode) : []
             };
         }
         return null;
     };
 
-    return sceneData.map(filterNode).filter(Boolean);
+    return sceneData.filter(filterNode);
 };
 
 export default SceneGraph; 

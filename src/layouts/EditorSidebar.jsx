@@ -1,19 +1,139 @@
 import { useState, useRef, useEffect } from 'react';
 import SceneGraph from '../components/Editor/SceneGraph';
+import { useScene } from '../context/SceneContext';
 
-const EditorSidebar = ({sceneData, originalScene}) => {
+const EditorSidebar = () => {
     const [activeTab, setActiveTab] = useState('properties');
-    const [selectedNode, setSelectedNode] = useState(null);
     const [sceneGraphHeight, setSceneGraphHeight] = useState(300); // 기본 높이
     const [isResizing, setIsResizing] = useState(false);
+    const [transformMode, setTransformMode] = useState('translate'); // translate, rotate, scale
     const resizeRef = useRef(null);
+    
+    const { 
+        sceneData, 
+        selectedNode, 
+        selectNode, 
+        toggleNodeVisibility,
+        updateNodePosition,
+        updateNodeRotation,
+        updateNodeScale,
+        updateNodeColor,
+        updateNodeOpacity,
+        findNodeById
+    } = useScene();
+
+    // 선택된 노드의 현재 속성들
+    const [position, setPosition] = useState({ x: 0, y: 0, z: 0 });
+    const [rotation, setRotation] = useState({ x: 0, y: 0, z: 0 });
+    const [scale, setScale] = useState({ x: 1, y: 1, z: 1 });
+    const [color, setColor] = useState('#ffffff');
+    const [opacity, setOpacity] = useState(1);
+
+    // 선택된 노드가 변경될 때 속성 값들을 업데이트
+    useEffect(() => {
+        if (selectedNode) {
+            const node = findNodeById(selectedNode.id);
+            if (node) {
+                // 위치
+                setPosition({
+                    x: node.position.x,
+                    y: node.position.y,
+                    z: node.position.z
+                });
+
+                // 회전 (라디안을 도로 변환)
+                setRotation({
+                    x: (node.rotation.x * 180) / Math.PI,
+                    y: (node.rotation.y * 180) / Math.PI,
+                    z: (node.rotation.z * 180) / Math.PI
+                });
+
+                // 스케일
+                setScale({
+                    x: node.scale.x,
+                    y: node.scale.y,
+                    z: node.scale.z
+                });
+
+                // 색상
+                if (node.material) {
+                    if (Array.isArray(node.material)) {
+                        setColor('#' + node.material[0].color.getHexString());
+                    } else {
+                        setColor('#' + node.material.color.getHexString());
+                    }
+                }
+
+                // 투명도
+                if (node.material) {
+                    if (Array.isArray(node.material)) {
+                        setOpacity(node.material[0].opacity || 1);
+                    } else {
+                        setOpacity(node.material.opacity || 1);
+                    }
+                }
+            }
+        }
+    }, [selectedNode, findNodeById]);
 
     const handleTabChange = (tab) => {
         setActiveTab(tab);
     };
 
-    const handleNodeSelect = (node) => {
-        setSelectedNode(node);
+    // Transform 모드 변경
+    const handleTransformModeChange = (mode) => {
+        setTransformMode(mode);
+        // 여기서 전역 상태로 Transform 모드를 업데이트할 수 있습니다
+        console.log('Transform mode changed to:', mode);
+    };
+
+    // 위치 변경 핸들러
+    const handlePositionChange = (axis, value) => {
+        if (!selectedNode) return;
+        
+        const newPosition = { ...position, [axis]: parseFloat(value) };
+        setPosition(newPosition);
+        updateNodePosition(selectedNode.id, newPosition);
+    };
+
+    // 회전 변경 핸들러
+    const handleRotationChange = (axis, value) => {
+        if (!selectedNode) return;
+        
+        const newRotation = { ...rotation, [axis]: parseFloat(value) };
+        setRotation(newRotation);
+        // 도를 라디안으로 변환
+        const radians = {
+            x: (newRotation.x * Math.PI) / 180,
+            y: (newRotation.y * Math.PI) / 180,
+            z: (newRotation.z * Math.PI) / 180
+        };
+        updateNodeRotation(selectedNode.id, radians);
+    };
+
+    // 스케일 변경 핸들러
+    const handleScaleChange = (axis, value) => {
+        if (!selectedNode) return;
+        
+        const newScale = { ...scale, [axis]: parseFloat(value) };
+        setScale(newScale);
+        updateNodeScale(selectedNode.id, newScale);
+    };
+
+    // 색상 변경 핸들러
+    const handleColorChange = (newColor) => {
+        if (!selectedNode) return;
+        
+        setColor(newColor);
+        updateNodeColor(selectedNode.id, newColor);
+    };
+
+    // 투명도 변경 핸들러
+    const handleOpacityChange = (newOpacity) => {
+        if (!selectedNode) return;
+        
+        setOpacity(newOpacity);
+        updateNodeOpacity(selectedNode.id, newOpacity);
     };
 
     // 리사이즈 시작
@@ -75,10 +195,10 @@ const EditorSidebar = ({sceneData, originalScene}) => {
                 style={{ height: `${sceneGraphHeight}px` }}
             >
                 <SceneGraph 
-                    sceneData={sceneData} 
-                    onNodeSelect={handleNodeSelect} 
-                    selectedNode={selectedNode} 
-                    originalScene={originalScene}
+                    sceneData={sceneData}
+                    onNodeSelect={selectNode}
+                    selectedNode={selectedNode}
+                    onVisibilityToggle={toggleNodeVisibility}
                 />
             </div>
 
@@ -137,6 +257,45 @@ const EditorSidebar = ({sceneData, originalScene}) => {
                                 <div>
                                     <h3 className="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">Selected: {selectedNode.name}</h3>
                                 </div>
+
+                                {/* 기즈모 모드 선택 */}
+                                <div>
+                                    <h3 className="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">Gizmo Mode</h3>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <button
+                                            onClick={() => handleTransformModeChange('translate')}
+                                            className={`px-3 py-2 text-xs rounded transition-colors ${
+                                                transformMode === 'translate' 
+                                                    ? 'bg-brand-500 text-white' 
+                                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            Move
+                                        </button>
+                                        <button
+                                            onClick={() => handleTransformModeChange('rotate')}
+                                            className={`px-3 py-2 text-xs rounded transition-colors ${
+                                                transformMode === 'rotate' 
+                                                    ? 'bg-brand-500 text-white' 
+                                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            Rotate
+                                        </button>
+                                        <button
+                                            onClick={() => handleTransformModeChange('scale')}
+                                            className={`px-3 py-2 text-xs rounded transition-colors ${
+                                                transformMode === 'scale' 
+                                                    ? 'bg-brand-500 text-white' 
+                                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            Scale
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {/* Transform 섹션 */}
                                 <div>
                                     <h3 className="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">Transform</h3>
                                     <div className="space-y-3">
@@ -144,29 +303,113 @@ const EditorSidebar = ({sceneData, originalScene}) => {
                                             <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Position X</label>
                                             <input
                                                 type="number"
+                                                step="0.1"
+                                                value={position.x}
+                                                onChange={(e) => handlePositionChange('x', e.target.value)}
                                                 className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 focus:border-transparent"
-                                                defaultValue="0"
                                             />
                                         </div>
                                         <div>
                                             <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Position Y</label>
                                             <input
                                                 type="number"
+                                                step="0.1"
+                                                value={position.y}
+                                                onChange={(e) => handlePositionChange('y', e.target.value)}
                                                 className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 focus:border-transparent"
-                                                defaultValue="0"
                                             />
                                         </div>
                                         <div>
                                             <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Position Z</label>
                                             <input
                                                 type="number"
+                                                step="0.1"
+                                                value={position.z}
+                                                onChange={(e) => handlePositionChange('z', e.target.value)}
                                                 className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 focus:border-transparent"
-                                                defaultValue="0"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Rotation 섹션 */}
+                                <div>
+                                    <h3 className="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">Rotation</h3>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Rotation X (degrees)</label>
+                                            <input
+                                                type="number"
+                                                step="1"
+                                                value={rotation.x}
+                                                onChange={(e) => handleRotationChange('x', e.target.value)}
+                                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 focus:border-transparent"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Rotation Y (degrees)</label>
+                                            <input
+                                                type="number"
+                                                step="1"
+                                                value={rotation.y}
+                                                onChange={(e) => handleRotationChange('y', e.target.value)}
+                                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 focus:border-transparent"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Rotation Z (degrees)</label>
+                                            <input
+                                                type="number"
+                                                step="1"
+                                                value={rotation.z}
+                                                onChange={(e) => handleRotationChange('z', e.target.value)}
+                                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 focus:border-transparent"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Scale 섹션 */}
+                                <div>
+                                    <h3 className="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">Scale</h3>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Scale X</label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                min="0"
+                                                value={scale.x}
+                                                onChange={(e) => handleScaleChange('x', e.target.value)}
+                                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 focus:border-transparent"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Scale Y</label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                min="0"
+                                                value={scale.y}
+                                                onChange={(e) => handleScaleChange('y', e.target.value)}
+                                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 focus:border-transparent"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Scale Z</label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                min="0"
+                                                value={scale.z}
+                                                onChange={(e) => handleScaleChange('z', e.target.value)}
+                                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 focus:border-transparent"
                                             />
                                         </div>
                                     </div>
                                 </div>
                                 
+                                {/* Material 섹션 */}
                                 <div>
                                     <h3 className="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">Material</h3>
                                     <div className="space-y-3">
@@ -174,8 +417,9 @@ const EditorSidebar = ({sceneData, originalScene}) => {
                                             <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Color</label>
                                             <input
                                                 type="color"
+                                                value={color}
+                                                onChange={(e) => handleColorChange(e.target.value)}
                                                 className="w-full h-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded cursor-pointer"
-                                                defaultValue="#ffffff"
                                             />
                                         </div>
                                         <div>
@@ -184,10 +428,14 @@ const EditorSidebar = ({sceneData, originalScene}) => {
                                                 type="range"
                                                 min="0"
                                                 max="1"
-                                                step="0.1"
+                                                step="0.01"
+                                                value={opacity}
+                                                onChange={(e) => handleOpacityChange(parseFloat(e.target.value))}
                                                 className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-                                                defaultValue="1"
                                             />
+                                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                {Math.round(opacity * 100)}%
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

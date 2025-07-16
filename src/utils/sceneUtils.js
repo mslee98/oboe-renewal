@@ -42,8 +42,8 @@ const hasModifiers = (node) => {
     return !!(node.geometry || node.material || node.userData);
 };
 
-// 노드 가시성 토글 함수
-export const toggleNodeVisibility = (scene, nodeId, visible) => {
+// 노드 가시성 토글 함수 - 콜백 함수를 받아서 상태 업데이트 트리거
+export const toggleNodeVisibility = (scene, nodeId, visible, onStateChange) => {
     const findAndToggleNode = (node) => {
         if (node.uuid === nodeId) {
             node.visible = visible;
@@ -60,7 +60,11 @@ export const toggleNodeVisibility = (scene, nodeId, visible) => {
         return false;
     };
 
-    findAndToggleNode(scene);
+    const success = findAndToggleNode(scene);
+    if (success && onStateChange) {
+        onStateChange(); // 상태 변경 콜백 호출
+    }
+    return success;
 };
 
 // 노드 찾기 함수
@@ -80,4 +84,9 @@ export const findNodeById = (scene, nodeId) => {
     };
 
     return findNode(scene);
+};
+
+// 씬 데이터를 다시 변환하는 함수 (상태 업데이트용)
+export const refreshSceneData = (scene) => {
+    return convertSceneToGraphData(scene);
 }; 
