@@ -26,6 +26,10 @@ const EXCLUDED_OBJECT_NAMES = [
 // 렌더링할 객체들의 이름 목록
 const RENDERABLE_OBJECT_NAMES = [
     "ORFloor_001",
+    "offwall_001",
+    "officeExit_001",
+    "blindA_001",
+
     "SerRackA_001",
     // 필요한 객체들을 여기에 추가
 ];

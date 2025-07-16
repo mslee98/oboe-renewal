@@ -120,9 +120,21 @@ const EditorContent = () => {
             </div>
             
             {/* EditorSidebar */}
-            {isEditorSidebarOpen && (
-                <EditorSidebar />
-            )}
+            <div 
+                className={`h-full overflow-hidden transition-all duration-300 ease-in-out ${
+                    isEditorSidebarOpen 
+                        ? 'w-80' 
+                        : 'w-0'
+                }`}
+            >
+                <div className={`w-80 h-full transition-transform duration-300 ease-in-out ${
+                    isEditorSidebarOpen 
+                        ? 'translate-x-0' 
+                        : '-translate-x-full'
+                }`}>
+                    <EditorSidebar />
+                </div>
+            </div>
         </div>
     );
 };
@@ -179,9 +191,10 @@ const EditorView = () => {
     return (
         <>
             <ambientLight intensity={0.5} />
-            <directionalLight position={[10, 10, 5]} intensity={1} />
-            <Grid args={[20, 20]} />
-            <group position={[0, 0.5, 0]}>
+            <directionalLight position={[10, 10, 5]} intensity={2} />
+            <Grid position={[0, -0.05, 0]} args={[20, 20]} />
+            
+            <group position={[0, 0, 0]}>
                 <primitive object={scene} />
             </group>
             
@@ -192,8 +205,13 @@ const EditorView = () => {
                 enableRotate={true}
                 minDistance={1}
                 maxDistance={100}
-                maxPolarAngle={Math.PI}
+                maxPolarAngle={Math.PI / 2} // 90도로 제한하여 바닥으로 회전 방지
                 minPolarAngle={0}
+                enableDamping={true} // 부드러운 스크롤링을 위한 댐핑 활성화
+                dampingFactor={0.05} // 댐핑 강도 (낮을수록 더 부드러움)
+                rotateSpeed={0.5} // 회전 속도 조절
+                zoomSpeed={0.8} // 줌 속도 조절
+                panSpeed={0.8} // 팬 속도 조절
             />
             
             {selectedNode && (

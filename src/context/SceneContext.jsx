@@ -28,7 +28,7 @@ export const SceneProvider = ({ children }) => {
         setSelectedNode(node);
     }, []);
 
-    // 노드 가시성 토글
+    // 노드 가시성 토글 - 씬 그래프 상태도 함께 업데이트
     const toggleNodeVisibility = useCallback((nodeId, visible) => {
         if (originalScene) {
             const findAndToggleNode = (node) => {
@@ -49,6 +49,25 @@ export const SceneProvider = ({ children }) => {
 
             findAndToggleNode(originalScene);
         }
+
+        // 씬 그래프 상태도 업데이트
+        setSceneData(prevSceneData => {
+            if (!prevSceneData) return prevSceneData;
+
+            const updateNodeVisibility = (nodes) => {
+                return nodes.map(node => {
+                    if (node.id === nodeId) {
+                        return { ...node, visible };
+                    }
+                    if (node.children) {
+                        return { ...node, children: updateNodeVisibility(node.children) };
+                    }
+                    return node;
+                });
+            };
+
+            return updateNodeVisibility(prevSceneData);
+        });
     }, [originalScene]);
 
     // 노드 ID로 3D 객체 찾기
