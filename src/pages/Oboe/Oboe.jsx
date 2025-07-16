@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useSidebar } from "../../context/SidebarContext";
 import { Grid, OrbitControls, useGLTF, Environment, Text, useTexture, Billboard } from "@react-three/drei";
 import { useTheme } from "../../context/ThemeContext";
@@ -22,89 +22,116 @@ const markerOptions = [
     }
 ];
 
-// 고정된 흰색 재질을 컴포넌트 외부에서 생성
-const whiteMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: false,
-    opacity: 1.0
-});
+// 테마별 조명 설정을 컴포넌트 외부로 분리
+const lightingConfig = {
+    light: {
+        ambient: { intensity: 0.3, color: '#ffffff' },
+        directional: { 
+            intensity: 0.8, 
+            position: [100, 1000, 100],
+            color: '#ffffff',
+            shadow: true
+        },
+        environment: { preset: 'city', background: true, blur: 0.6 }
+    },
+    dark: {
+        ambient: { intensity: 0.1, color: '#1a1a2e' },
+        directional: { 
+            intensity: 0.4, 
+            position: [100, 1000, 100],
+            color: '#4a90e2',
+            shadow: true
+        },
+        environment: { preset: 'night', background: true, blur: 0.8 }
+    }
+};
 
-// Pin 마커 컴포넌트 - 호버시 텍스트 추가
+// Pin 마커 컴포넌트 - mesh로 변경
 const PinMarker = ({ position, scale = [1, 1, 1], color = 0xffffff, isHovered, onHover, onUnhover, markerName }) => {
     const { nodes: pin } = useGLTF('/models/pin4.glb');
     const pinRef = useRef();
     const [textOpacity, setTextOpacity] = useState(0);
+    const [backgroundOpacity, setBackgroundOpacity] = useState(0);
+
+    // pin 모델의 geometry와 material 정보 추출
+    const pinGeometry = useMemo(() => {
+        if (pin.Extrude && pin.Extrude.geometry) {
+            return pin.Extrude.geometry.clone();
+        }
+        return null;
+    }, [pin.Extrude]);
+
+    const pinMaterial = useMemo(() => {
+        return new THREE.MeshStandardMaterial({
+            color: color,
+            roughness: 0.7,
+            metalness: 0.2
+        });
+    }, [color]);
 
     // 부드러운 스케일 애니메이션
     useFrame(() => {
         if (pinRef.current) {
-            const targetScale = isHovered ? 2 : 3; // 호버시 2로 변경
+            const targetScale = isHovered ? 1.5 : 3;
             const currentScale = pinRef.current.scale.x;
-            const newScale = THREE.MathUtils.lerp(currentScale, targetScale, 0.08);
+            const newScale = THREE.MathUtils.lerp(currentScale, targetScale, 0.3);
             
             pinRef.current.scale.setScalar(newScale);
         }
 
-        // 부드러운 텍스트 투명도 애니메이션
+        // 텍스트 투명도 애니메이션
         const targetOpacity = isHovered ? 1 : 0;
-        const newOpacity = THREE.MathUtils.lerp(textOpacity, targetOpacity, 0.1);
+        const newOpacity = THREE.MathUtils.lerp(textOpacity, targetOpacity, 0.3);
         setTextOpacity(newOpacity);
+        setBackgroundOpacity(newOpacity);
     });
 
     return (
-        <Billboard
-            follow={true}
-            lockX={false}
-            lockY={false}
-            lockZ={false}
-            position={position}
-        >
-            {/* 투명한 mesh로 이벤트 처리 */}
+        <group position={position}>
+            {/* Pin을 mesh로 변경 */}
             <mesh
+                ref={pinRef}
+                geometry={pinGeometry}
+                material={pinMaterial}
+                scale={[3, 3, 3]}
                 onPointerOver={onHover}
                 onPointerOut={onUnhover}
-                visible={false}
-            >
-                <sphereGeometry args={[20, 16, 16]} />
-                <meshBasicMaterial transparent opacity={0} />
-            </mesh>
-            
-            {/* 원본 pin 모델 사용 */}
-            <primitive 
-                ref={pinRef}
-                object={pin.Extrude.clone()}
-                scale={[3, 3, 3]}
+                castShadow
+                receiveShadow
             />
 
-            {/* 호버시 텍스트 표시 */}
-            {textOpacity > 0.01 && (
-                <>
-                    {/* 텍스트 배경 */}
-                    <mesh position={[0, 40, 0]}>
-                        <planeGeometry args={[120, 30]} />
-                        <meshBasicMaterial 
-                            color="rgba(0, 0, 0, 0.8)" 
-                            transparent 
-                            opacity={textOpacity * 0.9} 
-                        />
-                    </mesh>
-                    
-                    {/* 텍스트 */}
-                    <Text
-                        position={[0, 40, 1]}
-                        fontSize={12}
-                        color="#ffffff"
-                        anchorX="center"
-                        anchorY="middle"
-                        maxWidth={100}
-                        textAlign="center"
-                        opacity={textOpacity}
-                    >
-                        {markerName}
-                    </Text>
-                </>
-            )}
-        </Billboard>
+            {/* 텍스트를 Billboard로 감싸서 항상 카메라를 향하도록 */}
+            <Billboard
+                follow={true}
+                lockX={false}
+                lockY={false}
+                lockZ={false}
+            >
+                {/* 텍스트 배경 */}
+                <mesh position={[0, 40, 0]}>
+                    <planeGeometry args={[120, 30]} />
+                    <meshBasicMaterial 
+                        color="rgba(0, 0, 0, 0.8)" 
+                        transparent 
+                        opacity={backgroundOpacity} 
+                    />
+                </mesh>
+                
+                {/* 텍스트 */}
+                <Text
+                    position={[0, 40, 1]}
+                    fontSize={12}
+                    color="#ffffff"
+                    anchorX="center"
+                    anchorY="middle"
+                    maxWidth={100}
+                    textAlign="center"
+                    opacity={textOpacity}
+                >
+                    {markerName}
+                </Text>
+            </Billboard>
+        </group>
     );
 };
 
@@ -115,31 +142,34 @@ const Oboe = () => {
     const { isExpanded, isHovered, isMobileOpen } = useSidebar();
     const { theme } = useTheme();
 
-    // 테마별 조명 설정
-    const lightingConfig = {
-        light: {
-            ambient: { intensity: 0.3, color: '#ffffff' },
-            directional: { 
-                intensity: 0.8, 
-                position: [100, 1000, 100],
-                color: '#ffffff',
-                shadow: true
-            },
-            environment: { preset: 'city', background: true, blur: 0.6 }
-        },
-        dark: {
-            ambient: { intensity: 0.1, color: '#1a1a2e' },
-            directional: { 
-                intensity: 0.4, 
-                position: [100, 1000, 100],
-                color: '#4a90e2',
-                shadow: true
-            },
-            environment: { preset: 'night', background: true, blur: 0.8 }
-        }
-    };
+    // useMemo로 currentLighting을 안정화
+    const currentLighting = useMemo(() => {
+        return theme && lightingConfig[theme] ? lightingConfig[theme] : lightingConfig.light;
+    }, [theme]);
 
-    const currentLighting = lightingConfig[theme] || lightingConfig.light;
+    // Environment를 고정하여 preset 변경으로 인한 리렌더링 방지
+    const environmentProps = useMemo(() => ({
+        preset: 'city', // 고정된 preset 사용
+        background: currentLighting.environment.background,
+        blur: currentLighting.environment.blur
+    }), [currentLighting.environment.background, currentLighting.environment.blur]);
+
+    // Ambient Light 설정도 useMemo로 안정화
+    const ambientLightProps = useMemo(() => ({
+        intensity: currentLighting.ambient.intensity,
+        color: currentLighting.ambient.color
+    }), [currentLighting.ambient]);
+
+    // Directional Light 설정도 useMemo로 안정화
+    const directionalLightProps = useMemo(() => ({
+        position: currentLighting.directional.position,
+        intensity: currentLighting.directional.intensity,
+        color: currentLighting.directional.color,
+        castShadow: currentLighting.directional.shadow
+    }), [currentLighting.directional]);
+
+    // Canvas 키를 고정하여 불필요한 리마운트 방지
+    const canvasKey = useMemo(() => 'stable-canvas', []);
 
     useEffect(() => {
         const updateDimensions = () => {
@@ -189,7 +219,7 @@ const Oboe = () => {
     return (
         <div 
             ref={containerRef} 
-            className="overflow-hidden" 
+            className="overflow-hidden dark:bg-gray-900" 
             style={{ 
                 height: canvasHeight,
                 width: canvasWidth,
@@ -197,35 +227,31 @@ const Oboe = () => {
             }}
         >
             <Canvas
+                key={canvasKey}
                 camera={{ 
-                    position: [2000, 500, -800], 
+                    position: [2800, 600, -200], // 측면에서 보도록 조정
                     fov: 45, 
                     far: 3000, 
-                    rotation: [-Math.PI / 2.5, 0, 0] 
+                    rotation: [-Math.PI / 4, 0, 0] // 더 완만한 각도
                 }}
                 gl={{ 
                     outputColorSpace: THREE.SRGBColorSpace,
                 }}
                 shadows
             >
+                {/* Environment를 고정하여 preset 변경 방지 */}
                 <Environment 
-                    preset={currentLighting.environment.preset}
-                    background={currentLighting.environment.background}
-                    blur={currentLighting.environment.blur}
+                    preset="city"
+                    background={true}
+                    blur={0.6}
                 />
 
                 <fog attach="fog" args={["#000000", 1000, 3000]} />
 
-                <ambientLight 
-                    intensity={currentLighting.ambient.intensity} 
-                    color={currentLighting.ambient.color}
-                />
+                <ambientLight {...ambientLightProps} />
                 
                 <directionalLight
-                    position={currentLighting.directional.position}
-                    intensity={currentLighting.directional.intensity}
-                    color={currentLighting.directional.color}
-                    castShadow={currentLighting.directional.shadow}
+                    {...directionalLightProps}
                     shadow-mapSize-width={1024}
                     shadow-mapSize-height={1024}
                 />
@@ -235,7 +261,7 @@ const Oboe = () => {
                 <OrbitControls 
                     enablePan={true} 
                     enableZoom={true}
-                    target={[2000, 0, -800]}
+                    target={[2150, 0, -400]} // 타겟은 중간 지점 유지
                     minDistance={100}
                     maxDistance={2000}
                 />
