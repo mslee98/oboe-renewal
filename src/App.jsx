@@ -2,7 +2,9 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import AppLayout from './layouts/AppLayout'
 import Home from './pages/home'
 import NotFound from './pages/OtherPage/NotFound'
-import Oboe from './pages/Oboe'
+import Oboe from './pages/Oboe/Oboe'
+import CxArena from './pages/Oboe/CxArena'
+import Editor from './pages/Oboe/Editor'
 
 function App() {
 
@@ -14,6 +16,9 @@ function App() {
             <Route index element={<Home />} />
 
             <Route path="/oboe" element={<Oboe />} />
+            <Route path="/cxarena" element={<CxArena />} />
+            <Route path="/editor" element={<Editor />} />
+            {/* <Route path="/serverroom" element={<ServerRoom />} /> */}
 
             <Route path="*" element={<NotFound />} />
 

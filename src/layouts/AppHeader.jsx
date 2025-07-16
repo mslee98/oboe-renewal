@@ -66,7 +66,7 @@ const AppHeader = () => {
                     alt="Logo"
                     />
                     <img
-                    className="hidden dark:block"
+                    className="hidden dark:block w-10 h-10"
                     src="/images/logo/logo.png"
                     alt="Logo"
                     />

@@ -9,12 +9,16 @@ const navItems = [
     {
       icon: <GridIcon />,
       name: "Dashboard",
-      subItems: [{ name: "SubMenu1", path: "/", pro: false }],
+      subItems: [{ name: "SubMenu1", path: "/", admin: false }],
     },
     {
       icon: <CalenderIcon />,
       name: "Oboe",
-      path: "/oboe",
+      subItems: [
+        { name: "Oboe", path: "/Oboe", admin: false },
+        { name: "CX-Arena", path: "/cxarena", admin: false },
+        { name: "Editor", path: "/editor", admin: true },
+      ],
     },
     {
       icon: <UserCircleIcon />,
@@ -24,19 +28,19 @@ const navItems = [
     {
       name: "Menu5",
       icon: <ListIcon />,
-      subItems: [{ name: "Form Elements", path: "/form-elements", pro: false }],
+      subItems: [{ name: "Form Elements", path: "/form-elements", admin: false }],
     },
     {
       name: "Menu6",
       icon: <TableIcon />,
-      subItems: [{ name: "Basic Tables", path: "/basic-tables", pro: false }],
+      subItems: [{ name: "Basic Tables", path: "/basic-tables", admin: false }],
     },
     {
       name: "Pages",
       icon: <PageIcon />,
       subItems: [
-        { name: "Blank Page", path: "/blank", pro: false },
-        { name: "404 Error", path: "/error-404", pro: false },
+        { name: "Blank Page", path: "/blank", admin: false },
+        { name: "404 Error", path: "/error-404", admin: false },
       ],
     },
   ];
@@ -237,7 +241,7 @@ const AppSidebar = () => {
                                 new
                               </span>
                             )}
-                            {subItem.pro && (
+                            {subItem.admin && (
                               <span
                                 className={`ml-auto ${
                                   isActive(subItem.path)
@@ -245,7 +249,7 @@ const AppSidebar = () => {
                                     : "menu-dropdown-badge-inactive"
                                 } menu-dropdown-badge`}
                               >
-                                pro
+                                Admin
                               </span>
                             )}
                           </span>
