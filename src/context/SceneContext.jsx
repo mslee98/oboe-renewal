@@ -15,6 +15,12 @@ export const SceneProvider = ({ children }) => {
     const [sceneData, setSceneData] = useState(null);
     const [originalScene, setOriginalScene] = useState(null);
     const [selectedNode, setSelectedNode] = useState(null);
+    const [transformMode, setTransformMode] = useState(0);
+    const [hoveredNode, setHoveredNode] = useState(null);
+    const [objectTransformUpdate, setObjectTransformUpdate] = useState(0); // 객체 변화 감지용
+
+    // Transform 모드 정의
+    const modes = ['translate', 'rotate', 'scale'];
 
     // 씬 데이터 설정
     const updateSceneData = useCallback((newSceneData, newOriginalScene) => {
@@ -26,6 +32,26 @@ export const SceneProvider = ({ children }) => {
     const selectNode = useCallback((node) => {
         console.log('selectNode called with:', node);
         setSelectedNode(node);
+    }, []);
+
+    // 노드 호버
+    const hoverNode = useCallback((node) => {
+        setHoveredNode(node);
+    }, []);
+
+    // 노드 호버 해제
+    const unhoverNode = useCallback(() => {
+        setHoveredNode(null);
+    }, []);
+
+    // Transform 모드 변경
+    const changeTransformMode = useCallback((mode) => {
+        setTransformMode(mode);
+    }, []);
+
+    // 객체 변화 감지 트리거
+    const triggerObjectTransformUpdate = useCallback(() => {
+        setObjectTransformUpdate(prev => prev + 1);
     }, []);
 
     // 노드 가시성 토글 - 씬 그래프 상태도 함께 업데이트
@@ -96,24 +122,27 @@ export const SceneProvider = ({ children }) => {
         const node = findNodeById(nodeId);
         if (node) {
             node.position.set(newPosition.x, newPosition.y, newPosition.z);
+            triggerObjectTransformUpdate(); // 변화 감지 트리거
         }
-    }, [findNodeById]);
+    }, [findNodeById, triggerObjectTransformUpdate]);
 
     // 노드 회전 업데이트
     const updateNodeRotation = useCallback((nodeId, newRotation) => {
         const node = findNodeById(nodeId);
         if (node) {
             node.rotation.set(newRotation.x, newRotation.y, newRotation.z);
+            triggerObjectTransformUpdate(); // 변화 감지 트리거
         }
-    }, [findNodeById]);
+    }, [findNodeById, triggerObjectTransformUpdate]);
 
     // 노드 스케일 업데이트
     const updateNodeScale = useCallback((nodeId, newScale) => {
         const node = findNodeById(nodeId);
         if (node) {
             node.scale.set(newScale.x, newScale.y, newScale.z);
+            triggerObjectTransformUpdate(); // 변화 감지 트리거
         }
-    }, [findNodeById]);
+    }, [findNodeById, triggerObjectTransformUpdate]);
 
     // 노드 색상 업데이트
     const updateNodeColor = useCallback((nodeId, newColor) => {
@@ -150,8 +179,16 @@ export const SceneProvider = ({ children }) => {
                 sceneData,
                 originalScene,
                 selectedNode,
+                hoveredNode,
+                transformMode,
+                modes,
+                objectTransformUpdate,
                 updateSceneData,
                 selectNode,
+                hoverNode,
+                unhoverNode,
+                changeTransformMode,
+                triggerObjectTransformUpdate,
                 toggleNodeVisibility,
                 updateNodePosition,
                 updateNodeRotation,

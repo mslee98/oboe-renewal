@@ -19,7 +19,9 @@ const EditorSidebar = () => {
         updateNodeScale,
         updateNodeColor,
         updateNodeOpacity,
-        findNodeById
+        findNodeById,
+        originalScene,
+        objectTransformUpdate // 객체 변화 감지용
     } = useScene();
 
     // 선택된 노드의 현재 속성들
@@ -29,10 +31,11 @@ const EditorSidebar = () => {
     const [color, setColor] = useState('#ffffff');
     const [opacity, setOpacity] = useState(1);
 
-    // 선택된 노드가 변경될 때 속성 값들을 업데이트
+    // 선택된 노드가 변경되거나 객체가 변화할 때 속성 값들을 업데이트
     useEffect(() => {
         if (selectedNode) {
             const node = findNodeById(selectedNode.id);
+
             if (node) {
                 // 위치
                 setPosition({
@@ -74,7 +77,7 @@ const EditorSidebar = () => {
                 }
             }
         }
-    }, [selectedNode, findNodeById]);
+    }, [selectedNode, objectTransformUpdate, findNodeById]); // objectTransformUpdate 추가
 
     const handleTabChange = (tab) => {
         setActiveTab(tab);
@@ -256,43 +259,6 @@ const EditorSidebar = () => {
                             <>
                                 <div>
                                     <h3 className="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">Selected: {selectedNode.name}</h3>
-                                </div>
-
-                                {/* 기즈모 모드 선택 */}
-                                <div>
-                                    <h3 className="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">Gizmo Mode</h3>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <button
-                                            onClick={() => handleTransformModeChange('translate')}
-                                            className={`px-3 py-2 text-xs rounded transition-colors ${
-                                                transformMode === 'translate' 
-                                                    ? 'bg-brand-500 text-white' 
-                                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
-                                            }`}
-                                        >
-                                            Move
-                                        </button>
-                                        <button
-                                            onClick={() => handleTransformModeChange('rotate')}
-                                            className={`px-3 py-2 text-xs rounded transition-colors ${
-                                                transformMode === 'rotate' 
-                                                    ? 'bg-brand-500 text-white' 
-                                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
-                                            }`}
-                                        >
-                                            Rotate
-                                        </button>
-                                        <button
-                                            onClick={() => handleTransformModeChange('scale')}
-                                            className={`px-3 py-2 text-xs rounded transition-colors ${
-                                                transformMode === 'scale' 
-                                                    ? 'bg-brand-500 text-white' 
-                                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
-                                            }`}
-                                        >
-                                            Scale
-                                        </button>
-                                    </div>
                                 </div>
                                 
                                 {/* Transform 섹션 */}
