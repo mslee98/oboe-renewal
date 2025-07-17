@@ -19,7 +19,8 @@ export const SceneProvider = ({ children }) => {
     const [hoveredNode, setHoveredNode] = useState(null);
     const [objectTransformUpdate, setObjectTransformUpdate] = useState(0);
 
-    // 단순한 히스토리 관리
+    // 히스토리 설정
+    const MAX_HISTORY_SIZE = 20; // 히스토리 최대 개수 설정
     const [history, setHistory] = useState([]);
     const [currentIndex, setCurrentIndex] = useState(-1);
 
@@ -62,16 +63,22 @@ export const SceneProvider = ({ children }) => {
             // 현재 인덱스 이후의 히스토리를 제거하고 새 항목 추가
             const newHistory = [...prev.slice(0, currentIndex + 1), action];
             
-            // 최대 10개까지만 유지
-            if (newHistory.length > 10) {
-                return newHistory.slice(-10);
+            // 최대 개수까지만 유지
+            if (newHistory.length > MAX_HISTORY_SIZE) {
+                const trimmedHistory = newHistory.slice(-MAX_HISTORY_SIZE);
+                // currentIndex를 새로운 히스토리 길이에 맞게 조정
+                setCurrentIndex(MAX_HISTORY_SIZE - 1); // 마지막 인덱스
+                return trimmedHistory;
             }
             
             return newHistory;
         });
         
-        setCurrentIndex(prev => prev + 1);
-    }, [currentIndex]);
+        // 히스토리가 최대 개수 이하인 경우에만 인덱스 증가
+        if (currentIndex + 2 <= MAX_HISTORY_SIZE) {
+            setCurrentIndex(prev => prev + 1);
+        }
+    }, [currentIndex, MAX_HISTORY_SIZE]);
 
     // 히스토리에서 복원
     const restoreFromHistory = useCallback((index) => {
