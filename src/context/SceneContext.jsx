@@ -23,6 +23,8 @@ export const SceneProvider = ({ children }) => {
     const [history, setHistory] = useState([]);
     const [currentIndex, setCurrentIndex] = useState(-1);
 
+    console.log("sceneData", sceneData);
+
     // Transform 모드 정의
     const modes = ['translate', 'rotate', 'scale'];
 
