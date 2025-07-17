@@ -17,12 +17,105 @@ const Editor = () => {
     );
 };
 
+// 히스토리 컨트롤 컴포넌트
+const HistoryControls = () => {
+    const { 
+        undo, 
+        redo, 
+        currentIndex, 
+        history, 
+        clearHistory 
+    } = useScene();
+
+    const canUndo = currentIndex > 0;
+    const canRedo = currentIndex < history.length - 1;
+
+    return (
+        <div className="absolute top-4 left-4 z-10 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-2">
+            <div className="flex space-x-2">
+                <button
+                    onClick={undo}
+                    disabled={!canUndo}
+                    className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                        canUndo
+                            ? 'bg-blue-500 text-white hover:bg-blue-600'
+                            : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                    }`}
+                    aria-label="Undo"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                    </svg>
+                </button>
+                
+                <button
+                    onClick={redo}
+                    disabled={!canRedo}
+                    className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                        canRedo
+                            ? 'bg-blue-500 text-white hover:bg-blue-600'
+                            : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                    }`}
+                    aria-label="Redo"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
+                    </svg>
+                </button>
+                
+                <button
+                    onClick={clearHistory}
+                    className="px-3 py-2 text-sm font-medium rounded-md bg-red-500 text-white hover:bg-red-600 transition-colors"
+                    aria-label="Clear History"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+            </div>
+            
+            {/* 히스토리 상태 표시 */}
+            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                History: {currentIndex + 1} / {history.length}
+            </div>
+        </div>
+    );
+};
+
 const EditorContent = () => {
     const [canvasHeight, setCanvasHeight] = useState("100vh");
     const [canvasWidth, setCanvasWidth] = useState("100%");
     const [isEditorSidebarOpen, setIsEditorSidebarOpen] = useState(true);
     const containerRef = useRef(null);
     const { isExpanded, isHovered, isMobileOpen } = useSidebar();
+    const { undo, redo } = useScene(); // useScene에서 undo, redo 가져오기
+
+    // 키보드 이벤트 핸들러 추가
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            // Ctrl+Z (Undo)
+            if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+                event.preventDefault();
+                console.log('Ctrl+Z pressed - Undo');
+                undo();
+            }
+            
+            // Ctrl+Y 또는 Ctrl+Shift+Z (Redo)
+            if ((event.ctrlKey || event.metaKey) && 
+                ((event.key === 'y') || (event.key === 'z' && event.shiftKey))) {
+                event.preventDefault();
+                console.log('Ctrl+Y or Ctrl+Shift+Z pressed - Redo');
+                redo();
+            }
+        };
+
+        // 전역 키보드 이벤트 리스너 추가
+        document.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [undo, redo]);
 
     useEffect(() => {
         const updateDimensions = () => {
@@ -109,6 +202,9 @@ const EditorContent = () => {
                     </svg>
                 </button>
 
+                {/* 히스토리 컨트롤 */}
+                <HistoryControls />
+
                 {/* Transform Mode Controls */}
                 <TransformModeControls />
 
@@ -148,15 +244,19 @@ const EditorView = () => {
     const { scene: modelScene } = useGLTF("/models/IDC_CXARENA_V0.40.glb");
     const { updateSceneData, selectedNode, transformMode, findNodeById } = useScene();
     const selectedObjectRef = useRef(null);
+    const hasInitializedRef = useRef(false);
 
     useEffect(() => {
-        if (modelScene) {
+        if (modelScene && !hasInitializedRef.current) {
+            console.log('=== EDITOR VIEW INITIALIZATION ===');
+            hasInitializedRef.current = true;
+            
             const convertSceneToGraphData = (scene) => {
                 if (!scene) return [];
                 
                 const convertNode = (node) => {
                     const graphNode = {
-                        id: node.uuid, // UUID를 ID로 사용
+                        id: node.uuid,
                         name: node.name || 'Unnamed',
                         type: getNodeType(node),
                         visible: node.visible !== false,
@@ -190,11 +290,13 @@ const EditorView = () => {
             };
 
             const sceneData = convertSceneToGraphData(modelScene);
+            console.log('Calling updateSceneData');
             updateSceneData(sceneData, modelScene);
+            
+            // initializeHistory 호출 제거 - updateSceneData에서 자동으로 초기 상태 저장됨
         }
     }, [modelScene, updateSceneData]);
 
-    
     return (
         <>
             <ambientLight intensity={0.5} />
@@ -206,7 +308,7 @@ const EditorView = () => {
                 <primitive object={modelScene} />
             </group>
 
-            <Controls/>
+            {/* <Controls/> */}
             
         </>
     );
@@ -214,9 +316,18 @@ const EditorView = () => {
 
 const Controls = () => {
     const { scene } = useThree();
-    const { selectedNode, transformMode, modes, updateNodePosition, updateNodeRotation, updateNodeScale, triggerObjectTransformUpdate } = useScene();
+    const { 
+        selectedNode, 
+        transformMode, 
+        modes, 
+        updateNodePosition, 
+        updateNodeRotation, 
+        updateNodeScale, 
+        addToHistory
+    } = useScene();
     const [selectedObject, setSelectedObject] = useState(null);
     const [isTransformActive, setIsTransformActive] = useState(false);
+    const [initialTransformState, setInitialTransformState] = useState(null);
     const transformControlsRef = useRef(null);
     const orbitControlsRef = useRef(null);
 
@@ -229,44 +340,97 @@ const Controls = () => {
 
     // TransformControls 이벤트 핸들러
     const handleTransformStart = () => {
+        console.log('=== TRANSFORM START ===');
         setIsTransformActive(true);
+        
+        // Transform 시작 시 초기 상태 저장
+        if (selectedObject) {
+            setInitialTransformState({
+                position: { 
+                    x: selectedObject.position.x, 
+                    y: selectedObject.position.y, 
+                    z: selectedObject.position.z 
+                },
+                rotation: { 
+                    x: selectedObject.rotation.x, 
+                    y: selectedObject.rotation.y, 
+                    z: selectedObject.rotation.z 
+                },
+                scale: { 
+                    x: selectedObject.scale.x, 
+                    y: selectedObject.scale.y, 
+                    z: selectedObject.scale.z 
+                }
+            });
+        }
+        
         if (orbitControlsRef.current) {
             orbitControlsRef.current.enabled = false;
         }
     };
 
     const handleTransformEnd = () => {
+        console.log('=== TRANSFORM END ===');
         setIsTransformActive(false);
+        
         if (orbitControlsRef.current) {
             orbitControlsRef.current.enabled = true;
         }
         
-        // Transform이 끝날 때 최종 값 업데이트
-        if (selectedObject && selectedNode) {
-            updateNodePosition(selectedNode.id, {
-                x: selectedObject.position.x,
-                y: selectedObject.position.y,
-                z: selectedObject.position.z
-            });
-
-            updateNodeRotation(selectedNode.id, {
-                x: selectedObject.rotation.x,
-                y: selectedObject.rotation.y,
-                z: selectedObject.rotation.z
-            });
-
-            updateNodeScale(selectedNode.id, {
-                x: selectedObject.scale.x,
-                y: selectedObject.scale.y,
-                z: selectedObject.scale.z
-            });
+        // Transform이 끝날 때 히스토리 저장
+        if (selectedObject && selectedNode && initialTransformState) {
+            // 최종 상태
+            const finalState = {
+                position: { 
+                    x: selectedObject.position.x, 
+                    y: selectedObject.position.y, 
+                    z: selectedObject.position.z 
+                },
+                rotation: { 
+                    x: selectedObject.rotation.x, 
+                    y: selectedObject.rotation.y, 
+                    z: selectedObject.rotation.z 
+                },
+                scale: { 
+                    x: selectedObject.scale.x, 
+                    y: selectedObject.scale.y, 
+                    z: selectedObject.scale.z 
+                }
+            };
+            
+            // 상태가 실제로 변경되었는지 확인
+            const hasChanged = 
+                initialTransformState.position.x !== finalState.position.x ||
+                initialTransformState.position.y !== finalState.position.y ||
+                initialTransformState.position.z !== finalState.position.z ||
+                initialTransformState.rotation.x !== finalState.rotation.x ||
+                initialTransformState.rotation.y !== finalState.rotation.y ||
+                initialTransformState.rotation.z !== finalState.rotation.z ||
+                initialTransformState.scale.x !== finalState.scale.x ||
+                initialTransformState.scale.y !== finalState.scale.y ||
+                initialTransformState.scale.z !== finalState.scale.z;
+            
+            if (hasChanged) {
+                console.log('Transform changed, saving to history');
+                
+                // 히스토리에 저장 (변경 전 상태와 변경 후 상태 모두 저장)
+                addToHistory({
+                    type: 'transform',
+                    nodeId: selectedNode.id,
+                    beforeState: initialTransformState,  // 변경 전 상태
+                    afterState: finalState,             // 변경 후 상태
+                    timestamp: Date.now()
+                });
+            }
+            
+            setInitialTransformState(null);
         }
     };
 
     // Transform 변경 중 이벤트 (드래그 중일 때)
     const handleTransformChange = () => {
         if (selectedObject && selectedNode && isTransformActive) {
-            // 실시간으로 SceneContext 업데이트
+            // 실시간으로 SceneContext 업데이트만
             updateNodePosition(selectedNode.id, {
                 x: selectedObject.position.x,
                 y: selectedObject.position.y,
@@ -377,7 +541,7 @@ const TransformModeControls = () => {
             className="absolute z-10 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-2"
             style={{
                 left: `${position.x}px`,
-                top: `${position.y + 10}px`,
+                top: `${position.y + 5}px`,
                 transform: 'translate(-50%, -50%)'
             }}
         >
