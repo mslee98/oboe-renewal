@@ -2,7 +2,7 @@ import { useGLTF } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Outlines, Html, GizmoHelper, GizmoViewport, PivotControls, TransformControls } from "@react-three/drei";
 import { Grid } from "@react-three/drei";
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { useSidebar } from "../../context/SidebarContext";
 import { SceneProvider, useScene } from "../../context/SceneContext";
 import EditorSidebar from "../../layouts/EditorSidebar";
@@ -210,7 +210,10 @@ const EditorContent = () => {
 
                 <Canvas
                     camera={{ position: [10, 10, 10], fov: 50 }}
-                    gl={{ preserveDrawingBuffer: true }}
+                    gl={{ 
+                        preserveDrawingBuffer: false, // 성능 개선
+                        antialias: true 
+                    }}
                 >
                     <EditorView />
                     <Controls />
@@ -242,9 +245,21 @@ const EditorContent = () => {
 
 const EditorView = () => {
     const { scene: modelScene } = useGLTF("/models/IDC_CXARENA_V0.40.glb");
-    const { updateSceneData, selectedNode, transformMode, findNodeById } = useScene();
+    const { updateSceneData, selectedNode, transformMode, findNodeById, selectNode, sceneData } = useScene();
     const selectedObjectRef = useRef(null);
     const hasInitializedRef = useRef(false);
+    const { camera } = useThree();
+
+    // 노드 타입 판별 함수
+    const getNodeType = (node) => {
+        if (node.isScene) return 'scene';
+        if (node.isGroup) return 'collection';
+        if (node.isMesh) return 'mesh';
+        if (node.isLight) return 'light';
+        if (node.isCamera) return 'camera';
+        if (node.isObject3D) return 'object';
+        return 'unknown';
+    };
 
     useEffect(() => {
         if (modelScene && !hasInitializedRef.current) {
@@ -275,16 +290,6 @@ const EditorView = () => {
                 return [convertNode(scene)];
             };
 
-            const getNodeType = (node) => {
-                if (node.isScene) return 'scene';
-                if (node.isGroup) return 'collection';
-                if (node.isMesh) return 'mesh';
-                if (node.isLight) return 'light';
-                if (node.isCamera) return 'camera';
-                if (node.isObject3D) return 'object';
-                return 'unknown';
-            };
-
             const hasModifiers = (node) => {
                 return !!(node.geometry || node.material || node.userData);
             };
@@ -292,8 +297,6 @@ const EditorView = () => {
             const sceneData = convertSceneToGraphData(modelScene);
             console.log('Calling updateSceneData');
             updateSceneData(sceneData, modelScene);
-            
-            // initializeHistory 호출 제거 - updateSceneData에서 자동으로 초기 상태 저장됨
         }
     }, [modelScene, updateSceneData]);
 
@@ -304,13 +307,190 @@ const EditorView = () => {
             <Grid position={[0, -0.05, 0]} args={[20, 20]} />
             
             {/* 원본 씬 렌더링 */}
-            <group position={[0, 0, 0]}>
-                <primitive object={modelScene} />
-            </group>
-
-            {/* <Controls/> */}
+            <primitive object={modelScene} />
             
+            {/* 클릭 이벤트 처리를 위한 컴포넌트 */}
+            <CanvasClickHandler />
         </>
+    );
+};
+
+// Canvas 클릭 이벤트를 처리하는 컴포넌트
+const CanvasClickHandler = () => {
+    const { camera, scene } = useThree();
+    const raycasterRef = useRef(new THREE.Raycaster());
+    const mouseRef = useRef(new THREE.Vector2());
+    const { selectNode, findNodeById } = useScene();
+    const [hoveredObject, setHoveredObject] = useState(null);
+    const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+
+    // 상위 그룹을 찾는 함수
+    const findTopLevelGroup = (object) => {
+        let current = object;
+        
+        // Scene의 직접적인 자식까지 올라가기
+        while (current.parent && current.parent.type !== 'Scene') {
+            current = current.parent;
+        }
+        
+        return current;
+    };
+
+    // 이름 패턴으로 상위 그룹 찾기 (예: SerRackA_001)
+    const findParentGroupByName = (object) => {
+        let current = object;
+        
+        while (current.parent && current.parent.type !== 'Scene') {
+            // SerRack 패턴을 가진 그룹 찾기
+            if (current.parent.name && current.parent.name.includes('SerRack')) {
+                return current.parent;
+            }
+            current = current.parent;
+        }
+        
+        return object; // 찾지 못하면 원본 객체 반환
+    };
+
+    const handleCanvasMouseMove = useCallback((event) => {
+        // 마우스 좌표를 정규화된 좌표로 변환
+        const rect = event.target.getBoundingClientRect();
+        mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        // 마우스 위치 저장
+        setMousePosition({ x: event.clientX, y: event.clientY });
+
+        // 레이캐스터 설정
+        raycasterRef.current.setFromCamera(mouseRef.current, camera);
+
+        // 씬에서 교차하는 객체 찾기
+        const intersects = raycasterRef.current.intersectObjects(scene.children, true);
+
+        if (intersects.length > 0) {
+            const hoveredObject = intersects[0].object;
+            const topLevelGroup = findParentGroupByName(hoveredObject);
+            setHoveredObject(topLevelGroup);
+        } else {
+            setHoveredObject(null);
+        }
+    }, [camera, scene]);
+
+    const handleCanvasClick = useCallback((event) => {
+        console.log('Canvas clicked!');
+        
+        // 마우스 좌표를 정규화된 좌표로 변환
+        const rect = event.target.getBoundingClientRect();
+        mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        console.log('Mouse coordinates:', mouseRef.current.x, mouseRef.current.y);
+
+        // 레이캐스터 설정
+        raycasterRef.current.setFromCamera(mouseRef.current, camera);
+
+        // 씬에서 교차하는 객체 찾기
+        const intersects = raycasterRef.current.intersectObjects(scene.children, true);
+
+        console.log('Intersects found:', intersects.length);
+
+        if (intersects.length > 0) {
+            const selectedObject = intersects[0].object;
+            console.log('Selected object:', selectedObject);
+            
+            // 상위 그룹 찾기
+            const topLevelGroup = findParentGroupByName(selectedObject);
+            console.log('Top level group:', topLevelGroup);
+            
+            // findNodeById로 노드 정보 가져오기
+            const node = findNodeById(topLevelGroup.uuid);
+            
+            if (node) {
+                const nodeInfo = {
+                    id: node.uuid,
+                    name: node.name || 'Unnamed',
+                    type: getNodeType(node),
+                    position: {
+                        x: node.position.x,
+                        y: node.position.y,
+                        z: node.position.z
+                    },
+                    rotation: {
+                        x: node.rotation.x,
+                        y: node.rotation.y,
+                        z: node.rotation.z
+                    },
+                    scale: {
+                        x: node.scale.x,
+                        y: node.scale.y,
+                        z: node.scale.z
+                    }
+                };
+
+                console.log('Selected node info:', nodeInfo);
+                selectNode(nodeInfo);
+            } else {
+                console.log('Node not found in scene data');
+                selectNode(null);
+            }
+        } else {
+            console.log('No object selected');
+            selectNode(null);
+        }
+    }, [camera, scene, selectNode, findNodeById]);
+
+    // 노드 타입 판별 함수
+    const getNodeType = (node) => {
+        if (node.isScene) return 'scene';
+        if (node.isGroup) return 'collection';
+        if (node.isMesh) return 'mesh';
+        if (node.isLight) return 'light';
+        if (node.isCamera) return 'camera';
+        if (node.isObject3D) return 'object';
+        return 'unknown';
+    };
+
+    // Canvas에 이벤트 추가
+    useEffect(() => {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+            console.log('Adding events to canvas');
+            canvas.addEventListener('click', handleCanvasClick);
+            canvas.addEventListener('mousemove', handleCanvasMouseMove);
+            return () => {
+                console.log('Removing events from canvas');
+                canvas.removeEventListener('click', handleCanvasClick);
+                canvas.removeEventListener('mousemove', handleCanvasMouseMove);
+            };
+        } else {
+            console.log('Canvas not found');
+        }
+    }, [handleCanvasClick, handleCanvasMouseMove]);
+
+    // 호버 라벨 렌더링 - 객체 위치에 따라가는 버전
+    if (!hoveredObject) return null;
+
+    // 객체의 월드 위치 계산
+    const worldPosition = new THREE.Vector3();
+    hoveredObject.getWorldPosition(worldPosition);
+
+    return (
+        <Html 
+            position={[worldPosition.x, worldPosition.y, worldPosition.z]}
+            style={{ 
+                pointerEvents: 'none',
+                transform: 'translate(-50%, -100%)',
+                marginTop: '-10px'
+            }}
+        >
+            <div
+                className="bg-black bg-opacity-75 text-white px-2 py-1 rounded text-sm font-medium whitespace-nowrap"
+                style={{
+                    pointerEvents: 'none',
+                }}
+            >
+                {hoveredObject.name || 'Unnamed Object'}
+            </div>
+        </Html>
     );
 };
 
@@ -333,10 +513,14 @@ const Controls = () => {
 
     useEffect(() => {
         if(selectedNode) {
-            const node = scene.getObjectByName(selectedNode.name);
+            // UUID로 객체 찾기
+            const node = scene.getObjectByProperty('uuid', selectedNode.id);
             setSelectedObject(node);
+            console.log('Selected object found:', node);
+        } else {
+            setSelectedObject(null);
         }
-    }, [selectedNode]);
+    }, [selectedNode, scene]);
 
     // TransformControls 이벤트 핸들러
     const handleTransformStart = () => {
@@ -453,7 +637,7 @@ const Controls = () => {
 
     return (
         <>
-            {selectedNode && (
+            {selectedObject && (
                 <TransformControls
                     ref={transformControlsRef}
                     object={selectedObject}
