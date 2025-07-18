@@ -1,12 +1,11 @@
 import { useGLTF } from "@react-three/drei";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Outlines, Html, GizmoHelper, GizmoViewport, PivotControls, TransformControls } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber"; // useCursor 추가
+import { OrbitControls, Outlines, Html, GizmoHelper, GizmoViewport, PivotControls, TransformControls, useCursor } from "@react-three/drei";
 import { Grid } from "@react-three/drei";
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { useSidebar } from "../../context/SidebarContext";
 import { SceneProvider, useScene } from "../../context/SceneContext";
 import EditorSidebar from "../../layouts/EditorSidebar";
-import { useThree } from "@react-three/fiber";
 import * as THREE from 'three';
 
 const Editor = () => {
@@ -320,45 +319,61 @@ const CanvasClickHandler = () => {
     const { camera, scene } = useThree();
     const raycasterRef = useRef(new THREE.Raycaster());
     const mouseRef = useRef(new THREE.Vector2());
-    const { selectNode, findNodeById } = useScene();
+    const { selectNode, isTransformEnding } = useScene();
     const [hoveredObject, setHoveredObject] = useState(null);
-    const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+    
+    // 즉시적인 트랜스폼 종료 상태를 위한 ref
+    const isTransformEndingRef = useRef(false);
 
-    // 상위 그룹을 찾는 함수
-    const findTopLevelGroup = (object) => {
+    // 선택 가능한 최상위 그룹을 찾는 함수
+    const findSelectableTopLevelGroup = (object) => {
         let current = object;
-        
-        // Scene의 직접적인 자식까지 올라가기
-        while (current.parent && current.parent.type !== 'Scene') {
-            current = current.parent;
-        }
-        
-        return current;
-    };
+        let selectableGroup = null;
 
-    // 이름 패턴으로 상위 그룹 찾기 (예: SerRackA_001)
-    const findParentGroupByName = (object) => {
-        let current = object;
-        
+        // 씬의 루트까지 올라가면서 선택 가능한 그룹 찾기
         while (current.parent && current.parent.type !== 'Scene') {
-            // SerRack 패턴을 가진 그룹 찾기
-            if (current.parent.name && current.parent.name.includes('SerRack')) {
-                return current.parent;
+            // 특정 이름 패턴을 가진 그룹만 선택 가능하게 하거나
+            // 모든 그룹을 선택 가능하게 할 수 있습니다
+            if (current.parent.isGroup) {
+                // 예: SerRackA_001, ORFloor_001 등의 패턴
+                if (current.parent.name && (
+                    current.parent.name.includes('SerRack') ||
+                    current.parent.name.includes('ORFloor') ||
+                    current.parent.name.includes('offwall') ||
+                    current.parent.name.includes('officeExit') ||
+                    current.parent.name.includes('blindA')
+                )) {
+                    selectableGroup = current.parent;
+                }
             }
             current = current.parent;
         }
-        
-        return object; // 찾지 못하면 원본 객체 반환
+
+        // 선택 가능한 그룹이 없으면 원본 객체 반환
+        return selectableGroup || object;
     };
 
+    // TransformControls 관련 요소인지 확인하는 함수
+    const isTransformControlsElement = (object) => {
+        let current = object;
+        while (current.parent) {
+            if (current.type === 'TransformControls' || 
+                current.name.includes('TransformControls') ||
+                current.type === 'TransformControlsPlane' ||
+                current.type === 'TransformControlsGizmo') {
+                return true;
+            }
+            current = current.parent;
+        }
+        return false;
+    };
+
+    // 마우스 이동 이벤트 핸들러 추가
     const handleCanvasMouseMove = useCallback((event) => {
         // 마우스 좌표를 정규화된 좌표로 변환
         const rect = event.target.getBoundingClientRect();
         mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-        // 마우스 위치 저장
-        setMousePosition({ x: event.clientX, y: event.clientY });
 
         // 레이캐스터 설정
         raycasterRef.current.setFromCamera(mouseRef.current, camera);
@@ -367,15 +382,30 @@ const CanvasClickHandler = () => {
         const intersects = raycasterRef.current.intersectObjects(scene.children, true);
 
         if (intersects.length > 0) {
-            const hoveredObject = intersects[0].object;
-            const topLevelGroup = findParentGroupByName(hoveredObject);
-            setHoveredObject(topLevelGroup);
+            // TransformControls 요소가 아닌 첫 번째 객체 찾기
+            const validIntersect = intersects.find(intersect => 
+                !isTransformControlsElement(intersect.object)
+            );
+            
+            if (validIntersect) {
+                const hoveredObject = validIntersect.object;
+                const topLevelGroup = findSelectableTopLevelGroup(hoveredObject);
+                setHoveredObject(topLevelGroup);
+            } else {
+                setHoveredObject(null);
+            }
         } else {
             setHoveredObject(null);
         }
     }, [camera, scene]);
 
     const handleCanvasClick = useCallback((event) => {
+        // 즉시적인 트랜스폼 종료 상태 체크
+        if (isTransformEndingRef.current) {
+            console.log('Transform ending - ignoring click');
+            return;
+        }
+
         console.log('Canvas clicked!');
         
         // 마우스 좌표를 정규화된 좌표로 변환
@@ -383,60 +413,58 @@ const CanvasClickHandler = () => {
         mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-        console.log('Mouse coordinates:', mouseRef.current.x, mouseRef.current.y);
-
         // 레이캐스터 설정
         raycasterRef.current.setFromCamera(mouseRef.current, camera);
 
         // 씬에서 교차하는 객체 찾기
         const intersects = raycasterRef.current.intersectObjects(scene.children, true);
 
-        console.log('Intersects found:', intersects.length);
-
         if (intersects.length > 0) {
-            const selectedObject = intersects[0].object;
-            console.log('Selected object:', selectedObject);
+            // TransformControls 요소가 아닌 첫 번째 객체 찾기
+            const validIntersect = intersects.find(intersect => 
+                !isTransformControlsElement(intersect.object)
+            );
             
-            // 상위 그룹 찾기
-            const topLevelGroup = findParentGroupByName(selectedObject);
-            console.log('Top level group:', topLevelGroup);
-            
-            // findNodeById로 노드 정보 가져오기
-            const node = findNodeById(topLevelGroup.uuid);
-            
-            if (node) {
+            if (validIntersect) {
+                const selectedObject = validIntersect.object;
+                console.log('Selected object:', selectedObject);
+                
+                // 선택 가능한 최상위 그룹 찾기
+                const topLevelGroup = findSelectableTopLevelGroup(selectedObject);
+                console.log('Top level group:', topLevelGroup);
+                
                 const nodeInfo = {
-                    id: node.uuid,
-                    name: node.name || 'Unnamed',
-                    type: getNodeType(node),
+                    id: topLevelGroup.uuid,
+                    name: topLevelGroup.name || 'Unnamed',
+                    type: getNodeType(topLevelGroup),
                     position: {
-                        x: node.position.x,
-                        y: node.position.y,
-                        z: node.position.z
+                        x: topLevelGroup.position.x,
+                        y: topLevelGroup.position.y,
+                        z: topLevelGroup.position.z
                     },
                     rotation: {
-                        x: node.rotation.x,
-                        y: node.rotation.y,
-                        z: node.rotation.z
+                        x: topLevelGroup.rotation.x,
+                        y: topLevelGroup.rotation.y,
+                        z: topLevelGroup.rotation.z
                     },
                     scale: {
-                        x: node.scale.x,
-                        y: node.scale.y,
-                        z: node.scale.z
+                        x: topLevelGroup.scale.x,
+                        y: topLevelGroup.scale.y,
+                        z: topLevelGroup.scale.z
                     }
                 };
 
-                console.log('Selected node info:', nodeInfo);
+                console.log('Selected top level group info:', nodeInfo);
                 selectNode(nodeInfo);
             } else {
-                console.log('Node not found in scene data');
-                selectNode(null);
+                console.log('No valid object selected (only TransformControls elements found)');
+                // TransformControls 요소만 있는 경우 선택 해제하지 않음
             }
         } else {
             console.log('No object selected');
             selectNode(null);
         }
-    }, [camera, scene, selectNode, findNodeById]);
+    }, [camera, scene, selectNode]);
 
     // 노드 타입 판별 함수
     const getNodeType = (node) => {
@@ -449,20 +477,27 @@ const CanvasClickHandler = () => {
         return 'unknown';
     };
 
-    // Canvas에 이벤트 추가
+    // 전역에서 트랜스폼 종료 상태를 설정할 수 있도록 window 객체에 함수 등록
+    useEffect(() => {
+        window.setTransformEndingRef = (ending) => {
+            isTransformEndingRef.current = ending;
+        };
+        return () => {
+            delete window.setTransformEndingRef;
+        };
+    }, []);
+
+    // Canvas에 이벤트 리스너 추가
     useEffect(() => {
         const canvas = document.querySelector('canvas');
         if (canvas) {
-            console.log('Adding events to canvas');
             canvas.addEventListener('click', handleCanvasClick);
             canvas.addEventListener('mousemove', handleCanvasMouseMove);
+            
             return () => {
-                console.log('Removing events from canvas');
                 canvas.removeEventListener('click', handleCanvasClick);
                 canvas.removeEventListener('mousemove', handleCanvasMouseMove);
             };
-        } else {
-            console.log('Canvas not found');
         }
     }, [handleCanvasClick, handleCanvasMouseMove]);
 
@@ -503,13 +538,17 @@ const Controls = () => {
         updateNodePosition, 
         updateNodeRotation, 
         updateNodeScale, 
-        addToHistory
+        addToHistory,
+        setTransformEnding
     } = useScene();
     const [selectedObject, setSelectedObject] = useState(null);
-    const [isTransformActive, setIsTransformActive] = useState(false);
+    const [isTransformActive, setIsTransformActive] = useState(false); // 주석 해제
     const [initialTransformState, setInitialTransformState] = useState(null);
     const transformControlsRef = useRef(null);
     const orbitControlsRef = useRef(null);
+
+    // useCursor 훅 사용 - 주석 해제
+    useCursor(isTransformActive ? 'grabbing' : 'default');
 
     useEffect(() => {
         if(selectedNode) {
@@ -522,12 +561,22 @@ const Controls = () => {
         }
     }, [selectedNode, scene]);
 
-    // TransformControls 이벤트 핸들러
     const handleTransformStart = () => {
         console.log('=== TRANSFORM START ===');
-        setIsTransformActive(true);
+        setIsTransformActive(true); // 주석 해제
+        setTransformEnding(false);
         
-        // Transform 시작 시 초기 상태 저장
+        // 즉시적인 트랜스폼 종료 상태 해제
+        if (window.setTransformEndingRef) {
+            window.setTransformEndingRef(false);
+        }
+        
+        // OrbitControls 비활성화
+        if (orbitControlsRef.current) {
+            orbitControlsRef.current.enabled = false;
+        }
+
+        // 초기 상태 저장
         if (selectedObject) {
             setInitialTransformState({
                 position: { 
@@ -547,19 +596,29 @@ const Controls = () => {
                 }
             });
         }
-        
-        if (orbitControlsRef.current) {
-            orbitControlsRef.current.enabled = false;
-        }
     };
 
     const handleTransformEnd = () => {
         console.log('=== TRANSFORM END ===');
-        setIsTransformActive(false);
+        
+        // 즉시적인 트랜스폼 종료 상태 설정
+        if (window.setTransformEndingRef) {
+            window.setTransformEndingRef(true);
+        }
+        
+        setIsTransformActive(false); // 주석 해제
         
         if (orbitControlsRef.current) {
             orbitControlsRef.current.enabled = true;
         }
+        
+        // 500ms 후에 트랜스폼 종료 상태 해제
+        setTimeout(() => {
+            if (window.setTransformEndingRef) {
+                window.setTransformEndingRef(false);
+            }
+            console.log('Transform ending state cleared');
+        }, 500);
         
         // Transform이 끝날 때 히스토리 저장
         if (selectedObject && selectedNode && initialTransformState) {
@@ -613,7 +672,7 @@ const Controls = () => {
 
     // Transform 변경 중 이벤트 (드래그 중일 때)
     const handleTransformChange = () => {
-        if (selectedObject && selectedNode && isTransformActive) {
+        if (selectedObject && selectedNode && isTransformActive) { // isTransformActive 조건 추가
             // 실시간으로 SceneContext 업데이트만
             updateNodePosition(selectedNode.id, {
                 x: selectedObject.position.x,
@@ -646,15 +705,19 @@ const Controls = () => {
                     onMouseDown={handleTransformStart}
                     onMouseUp={handleTransformEnd}
                     onChange={handleTransformChange}
+                    size={0.75} // 크기 조정
+                    showX={true}
+                    showY={true}
+                    showZ={true}
                 />
             )}
 
             <OrbitControls 
                 ref={orbitControlsRef}
                 makeDefault
-                enablePan={!isTransformActive}
-                enableZoom={!isTransformActive}
-                enableRotate={!isTransformActive}
+                enablePan={!isTransformActive} // 주석 해제
+                enableZoom={!isTransformActive} // 주석 해제
+                enableRotate={!isTransformActive} // 주석 해제
                 minDistance={1}
                 maxDistance={100}
                 maxPolarAngle={Math.PI / 2}

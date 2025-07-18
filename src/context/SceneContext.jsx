@@ -18,13 +18,14 @@ export const SceneProvider = ({ children }) => {
     const [transformMode, setTransformMode] = useState(0);
     const [hoveredNode, setHoveredNode] = useState(null);
     const [objectTransformUpdate, setObjectTransformUpdate] = useState(0);
+    
+    // 트랜스폼 종료 상태 추가
+    const [isTransformEnding, setIsTransformEnding] = useState(false);
 
     // 히스토리 설정
     const MAX_HISTORY_SIZE = 20; // 히스토리 최대 개수 설정
     const [history, setHistory] = useState([]);
     const [currentIndex, setCurrentIndex] = useState(-1);
-
-    console.log("sceneData", sceneData);
 
     // Transform 모드 정의
     const modes = ['translate', 'rotate', 'scale'];
@@ -323,37 +324,38 @@ export const SceneProvider = ({ children }) => {
         }
     }, [findNodeById]);
 
+    const value = {
+        sceneData,
+        originalScene,
+        selectedNode,
+        transformMode,
+        hoveredNode,
+        objectTransformUpdate,
+        history,
+        currentIndex,
+        modes,
+        isTransformEnding, // 추가
+        findNodeById,
+        addToHistory,
+        restoreFromHistory,
+        undo,
+        redo,
+        clearHistory,
+        updateSceneData,
+        selectNode,
+        hoverNode,
+        unhoverNode,
+        changeTransformMode,
+        updateNodePosition,
+        updateNodeRotation,
+        updateNodeScale,
+        isTransformEnding,
+        setIsTransformEnding, // 추가
+        triggerObjectTransformUpdate
+    };
+
     return (
-        <SceneContext.Provider
-            value={{
-                sceneData,
-                originalScene,
-                selectedNode,
-                hoveredNode,
-                transformMode,
-                modes,
-                objectTransformUpdate,
-                history,
-                currentIndex,
-                updateSceneData,
-                selectNode,
-                hoverNode,
-                unhoverNode,
-                changeTransformMode,
-                triggerObjectTransformUpdate,
-                toggleNodeVisibility,
-                updateNodePosition,
-                updateNodeRotation,
-                updateNodeScale,
-                updateNodeColor,
-                updateNodeOpacity,
-                findNodeById,
-                undo,
-                redo,
-                addToHistory,
-                clearHistory
-            }}
-        >
+        <SceneContext.Provider value={value}>
             {children}
         </SceneContext.Provider>
     );
