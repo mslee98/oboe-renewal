@@ -520,12 +520,25 @@ const CanvasClickHandler = () => {
             }}
         >
             <div
-                className="bg-black bg-opacity-75 text-white px-2 py-1 rounded text-sm font-medium whitespace-nowrap"
+                className="px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap shadow-lg border backdrop-blur-sm transition-all duration-200 bg-white/90 dark:bg-gray-900/90 text-gray-900 dark:text-gray-100 border-gray-200/50 dark:border-gray-700/50 shadow-gray-900/10 dark:shadow-gray-900/20"
                 style={{
                     pointerEvents: 'none',
                 }}
             >
-                {hoveredObject.name || 'Unnamed Object'}
+                <div className="flex items-center space-x-2">
+                    {/* 객체 타입에 따른 아이콘 */}
+                    <div className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400" />
+                    
+                    {/* 객체 이름 */}
+                    <span className="font-semibold">
+                        {hoveredObject.name || 'Unnamed Object'}
+                    </span>
+                    
+                    {/* 객체 타입 표시 */}
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100/50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-300">
+                        {getNodeType(hoveredObject)}
+                    </span>
+                </div>
             </div>
         </Html>
     );
