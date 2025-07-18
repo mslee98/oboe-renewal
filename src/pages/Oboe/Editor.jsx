@@ -325,32 +325,21 @@ const CanvasClickHandler = () => {
     // 즉시적인 트랜스폼 종료 상태를 위한 ref
     const isTransformEndingRef = useRef(false);
 
-    // 선택 가능한 최상위 그룹을 찾는 함수
-    const findSelectableTopLevelGroup = (object) => {
+    // 클릭한 객체의 부모(모델 씬의 직접적인 자식)를 찾는 함수
+    const findParentInModelScene = (object) => {
         let current = object;
-        let selectableGroup = null;
-
-        // 씬의 루트까지 올라가면서 선택 가능한 그룹 찾기
-        while (current.parent && current.parent.type !== 'Scene') {
-            // 특정 이름 패턴을 가진 그룹만 선택 가능하게 하거나
-            // 모든 그룹을 선택 가능하게 할 수 있습니다
-            if (current.parent.isGroup) {
-                // 예: SerRackA_001, ORFloor_001 등의 패턴
-                if (current.parent.name && (
-                    current.parent.name.includes('SerRack') ||
-                    current.parent.name.includes('ORFloor') ||
-                    current.parent.name.includes('offwall') ||
-                    current.parent.name.includes('officeExit') ||
-                    current.parent.name.includes('blindA')
-                )) {
-                    selectableGroup = current.parent;
-                }
-            }
+        
+        // 모델 씬(name: "Scene")까지 올라가기
+        while (current.parent && current.parent.name !== 'Scene') {
             current = current.parent;
         }
-
-        // 선택 가능한 그룹이 없으면 원본 객체 반환
-        return selectableGroup || object;
+        
+        // 모델 씬의 직접적인 자식이면 그 객체 반환
+        if (current.parent && current.parent.name === 'Scene') {
+            return current;
+        }
+        
+        return null;
     };
 
     // TransformControls 관련 요소인지 확인하는 함수
@@ -378,7 +367,7 @@ const CanvasClickHandler = () => {
         // 레이캐스터 설정
         raycasterRef.current.setFromCamera(mouseRef.current, camera);
 
-        // 씬에서 교차하는 객체 찾기
+        // scene의 모든 자식들을 검색 (자식 객체도 포함)
         const intersects = raycasterRef.current.intersectObjects(scene.children, true);
 
         if (intersects.length > 0) {
@@ -389,8 +378,16 @@ const CanvasClickHandler = () => {
             
             if (validIntersect) {
                 const hoveredObject = validIntersect.object;
-                const topLevelGroup = findSelectableTopLevelGroup(hoveredObject);
-                setHoveredObject(topLevelGroup);
+                console.log('Hovered object:', hoveredObject.name);
+                
+                // 부모 객체 찾기
+                const parentObject = findParentInModelScene(hoveredObject);
+                if (parentObject) {
+                    console.log('Parent object:', parentObject.name);
+                    setHoveredObject(parentObject);
+                } else {
+                    setHoveredObject(null);
+                }
             } else {
                 setHoveredObject(null);
             }
@@ -416,7 +413,7 @@ const CanvasClickHandler = () => {
         // 레이캐스터 설정
         raycasterRef.current.setFromCamera(mouseRef.current, camera);
 
-        // 씬에서 교차하는 객체 찾기
+        // scene의 모든 자식들을 검색 (자식 객체도 포함)
         const intersects = raycasterRef.current.intersectObjects(scene.children, true);
 
         if (intersects.length > 0) {
@@ -427,38 +424,43 @@ const CanvasClickHandler = () => {
             
             if (validIntersect) {
                 const selectedObject = validIntersect.object;
-                console.log('Selected object:', selectedObject);
+                console.log('Selected object:', selectedObject.name);
                 
-                // 선택 가능한 최상위 그룹 찾기
-                const topLevelGroup = findSelectableTopLevelGroup(selectedObject);
-                console.log('Top level group:', topLevelGroup);
+                // 부모 객체 찾기
+                const parentObject = findParentInModelScene(selectedObject);
                 
-                const nodeInfo = {
-                    id: topLevelGroup.uuid,
-                    name: topLevelGroup.name || 'Unnamed',
-                    type: getNodeType(topLevelGroup),
-                    position: {
-                        x: topLevelGroup.position.x,
-                        y: topLevelGroup.position.y,
-                        z: topLevelGroup.position.z
-                    },
-                    rotation: {
-                        x: topLevelGroup.rotation.x,
-                        y: topLevelGroup.rotation.y,
-                        z: topLevelGroup.rotation.z
-                    },
-                    scale: {
-                        x: topLevelGroup.scale.x,
-                        y: topLevelGroup.scale.y,
-                        z: topLevelGroup.scale.z
-                    }
-                };
+                if (parentObject) {
+                    console.log('Parent object:', parentObject.name);
+                    
+                    const nodeInfo = {
+                        id: parentObject.uuid,
+                        name: parentObject.name || 'Unnamed',
+                        type: getNodeType(parentObject),
+                        position: {
+                            x: parentObject.position.x,
+                            y: parentObject.position.y,
+                            z: parentObject.position.z
+                        },
+                        rotation: {
+                            x: parentObject.rotation.x,
+                            y: parentObject.rotation.y,
+                            z: parentObject.rotation.z
+                        },
+                        scale: {
+                            x: parentObject.scale.x,
+                            y: parentObject.scale.y,
+                            z: parentObject.scale.z
+                        }
+                    };
 
-                console.log('Selected top level group info:', nodeInfo);
-                selectNode(nodeInfo);
+                    console.log('Selected parent object info:', nodeInfo);
+                    selectNode(nodeInfo);
+                } else {
+                    console.log('No valid parent object found');
+                    // 모델 씬 외부의 객체는 선택하지 않음
+                }
             } else {
                 console.log('No valid object selected (only TransformControls elements found)');
-                // TransformControls 요소만 있는 경우 선택 해제하지 않음
             }
         } else {
             console.log('No object selected');
@@ -536,7 +538,6 @@ const Controls = () => {
         transformMode, 
         modes, 
         updateNodePosition, 
-        updateNodeRotation, 
         updateNodeScale, 
         addToHistory,
         setTransformEnding
