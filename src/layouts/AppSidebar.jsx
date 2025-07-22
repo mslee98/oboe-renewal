@@ -22,9 +22,11 @@ const navItems = [
     },
     {
       icon: <UserCircleIcon />,
-      name: "Menu4",
-      path: "/profile",
+      name: "Interior",
+      path: "/interior2ds",
+      admin: true,
     },
+
     {
       name: "Menu5",
       icon: <ListIcon />,

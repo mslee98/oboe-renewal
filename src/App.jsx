@@ -5,6 +5,7 @@ import NotFound from './pages/OtherPage/NotFound'
 import Oboe from './pages/Oboe/Oboe'
 import CxArena from './pages/Oboe/CxArena'
 import Editor from './pages/Oboe/Editor'
+import Interior2ds from './pages/Interior2ds'
 
 function App() {
 
@@ -19,6 +20,9 @@ function App() {
             <Route path="/cxarena" element={<CxArena />} />
             <Route path="/editor" element={<Editor />} />
             {/* <Route path="/serverroom" element={<ServerRoom />} /> */}
+
+            <Route path="/interior2ds" element={<Interior2ds />} />
+
 
             <Route path="*" element={<NotFound />} />
 
