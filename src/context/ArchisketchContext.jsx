@@ -6,6 +6,8 @@ import {
   calculateInnerPoints 
 } from '../types/archisketchTypes';
 
+import { v4 as uuidv4 } from 'uuid';
+
 const ArchisketchContext = createContext();
 
 export const useArchisketch = () => {
@@ -18,26 +20,144 @@ export const useArchisketch = () => {
 
 export const ArchisketchProvider = ({ children }) => {
   const [corners, setCorners] = useState([]);
+  const [walls, setWalls] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [selectedCornerId, setSelectedCornerId] = useState(null);
+  const [selectedWallId, setSelectedWallId] = useState(null);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
 
   // 모서리 포인트 추가
   const addCorner = useCallback((position) => {
-    const newCorner = createCorner(position);
-    setCorners(prev => [...prev, newCorner]);
-    console.log('새 모서리 포인트 추가:', newCorner);
+    console.log('addCorner 호출됨, position:', position);
+    
+    const newCorner = {
+      archiId: uuidv4(),
+      position
+    };
+    
+    console.log('생성된 코너:', newCorner);
+
+    // setCorners(prev => [...prev, newCorner]);
+    
+    setCorners(prev => {
+      console.log('setCorners 호출됨, 이전 corners:', prev);
+      const updatedCorners = [...prev, newCorner];
+      console.log('업데이트된 corners:', updatedCorners);
+      return updatedCorners;
+    });
+    
+    console.log('addCorner 반환:', newCorner);
     return newCorner;
   }, []);
 
-  // 모서리 포인트 업데이트
+  const addWall = useCallback((startCornerId, endCornerId) => {
+    const startCorner = corners.find(c => c.archiId === startCornerId);
+    const endCorner = corners.find(c => c.archiId === endCornerId);
+    
+    if (!startCorner || !endCorner) {
+      console.error('시작점 또는 끝점 코너를 찾을 수 없습니다.');
+      return null;
+    }
+    
+    const length = Math.sqrt(
+      Math.pow(endCorner.position.x - startCorner.position.x, 2) + 
+      Math.pow(endCorner.position.z - startCorner.position.z, 2)
+    );
+    
+    const newWall = {
+      archiId: uuidv4(),
+      corners: [startCornerId, endCornerId],
+      length,
+      thickness: 100,
+      height: 2400,
+      material: "concrete",
+      visible: true
+    };
+    
+    setWalls(prev => [...prev, newWall]);
+    return newWall;
+  }, [corners]);
+
+  const addWallWithCorners = useCallback((startCorner, endCorner) => {
+    console.log('addWallWithCorners 호출:', { startCorner, endCorner });
+    
+    if (!startCorner || !endCorner) {
+      console.error('시작점 또는 끝점 코너가 없습니다.');
+      return null;
+    }
+    
+    // 벽 길이 계산
+    const length = Math.sqrt(
+      Math.pow(endCorner.position.x - startCorner.position.x, 2) + 
+      Math.pow(endCorner.position.z - startCorner.position.z, 2)
+    );
+    
+    // 벽 객체 생성
+    const newWall = {
+      archiId: uuidv4(),
+      corners: [startCorner.archiId, endCorner.archiId],
+      length,
+      thickness: 100,
+      height: 2400,
+      material: "concrete",
+      visible: true
+    };
+    
+    setWalls(prev => [...prev, newWall]);
+    console.log('새 벽 추가:', newWall);
+    return newWall;
+  }, []);
+
+  // 모서리 포인트 업데이트 - 벽 길이 재계산 포함
   const updateCorner = useCallback((archiId, updates) => {
+    console.log('updateCorner 호출:', { archiId, updates });
+    
+    // 코너 업데이트
     setCorners(prev => prev.map(corner => 
       corner.archiId === archiId 
         ? { ...corner, ...updates }
         : corner
     ));
-  }, []);
+    
+    // 해당 코너와 연결된 벽들의 길이 재계산
+    setWalls(prev => prev.map(wall => {
+      // 이 벽이 업데이트된 코너를 포함하는지 확인
+      if (wall.corners && wall.corners.includes(archiId)) {
+        console.log('벽 길이 재계산:', wall);
+        
+        // 벽의 두 코너 찾기
+        const corner1 = corners.find(c => c.archiId === wall.corners[0]);
+        const corner2 = corners.find(c => c.archiId === wall.corners[1]);
+        
+        if (corner1 && corner2) {
+          // 업데이트된 코너의 새로운 위치 사용
+          const updatedCorner1 = wall.corners[0] === archiId 
+            ? { ...corner1, ...updates }
+            : corner1;
+          const updatedCorner2 = wall.corners[1] === archiId 
+            ? { ...corner2, ...updates }
+            : corner2;
+          
+          // 새로운 길이 계산
+          const newLength = Math.sqrt(
+            Math.pow(updatedCorner2.position.x - updatedCorner1.position.x, 2) + 
+            Math.pow(updatedCorner2.position.z - updatedCorner1.position.z, 2)
+          );
+          
+          console.log('벽 길이 업데이트:', { 
+            oldLength: wall.length, 
+            newLength: newLength 
+          });
+          
+          return {
+            ...wall,
+            length: newLength
+          };
+        }
+      }
+      return wall;
+    }));
+  }, [corners]);
 
   // 모서리 포인트 삭제
   const deleteCorner = useCallback((archiId) => {
@@ -103,6 +223,11 @@ export const ArchisketchProvider = ({ children }) => {
     setSelectedRoomId(null);
   }, []);
 
+  const selectedWall = useMemo(() => 
+    walls.find(wall => wall.archiId === selectedWallId), 
+    [walls, selectedWallId]
+  );
+
   // 방 선택
   const selectRoom = useCallback((archiId) => {
     setSelectedRoomId(archiId);
@@ -134,6 +259,7 @@ export const ArchisketchProvider = ({ children }) => {
   const value = {
     // 상태
     corners,
+    walls,
     rooms,
     selectedCornerId,
     selectedRoomId,
@@ -144,6 +270,8 @@ export const ArchisketchProvider = ({ children }) => {
     addCorner,
     updateCorner,
     deleteCorner,
+    addWall,
+    addWallWithCorners,
     addRoom,
     updateRoom,
     deleteRoom,
