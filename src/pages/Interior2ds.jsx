@@ -651,6 +651,7 @@ const PixiCanvas = () => {
       wallContainer.appendChild(endCircle);
       wallContainer.appendChild(text);
       
+      
       svgOverlayRef.current.appendChild(wallContainer);
     });
   }, [walls, getSvgCoordinates, corners]);
