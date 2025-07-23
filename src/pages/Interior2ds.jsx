@@ -533,17 +533,44 @@ const PixiCanvas = () => {
       endCircle.setAttribute("fill", "#fbbf24");
       endCircle.setAttribute("class", "MeasurementPoint__Point");
       
+      // 선의 각도 계산
+      const angle = Math.atan2(endSvgCoords.y - startSvgCoords.y, endSvgCoords.x - startSvgCoords.x);
+      
+      // 텍스트 배경 박스 생성 (선 위에 표시)
+      const textBackground = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      const textWidth = 80; // 텍스트 박스 너비
+      const textHeight = 20; // 텍스트 박스 높이
+      const textOffset = 15; // 선으로부터의 거리
+      
+      // 텍스트 위치 계산 (선의 중앙에서 위쪽으로 offset)
+      const textX = centerSvgCoords.x - textWidth / 2;
+      const textY = centerSvgCoords.y - textHeight / 2 - textOffset;
+      
+      textBackground.setAttribute("x", textX);
+      textBackground.setAttribute("y", textY);
+      textBackground.setAttribute("width", textWidth);
+      textBackground.setAttribute("height", textHeight);
+      textBackground.setAttribute("fill", "#ffffff");
+      textBackground.setAttribute("stroke", "#4a5568");
+      textBackground.setAttribute("stroke-width", "1");
+      textBackground.setAttribute("rx", "4"); // 모서리 둥글게
+      textBackground.setAttribute("ry", "4");
+      
       // 측정 텍스트
       const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      text.setAttribute("dominant-baseline", "central");
+      text.setAttribute("x", centerSvgCoords.x);
+      text.setAttribute("y", centerSvgCoords.y - textOffset);
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("dominant-baseline", "middle");
       text.setAttribute("class", "MeasurementBox__Measurement");
-      text.setAttribute("style", `transform: translate(${centerSvgCoords.x}px, ${centerSvgCoords.y}px) rotate(0rad); font-size: 15px; fill: #1f2937; font-family: Arial, sans-serif;`);
+      text.setAttribute("style", `font-size: 12px; fill: #1f2937; font-family: Arial, sans-serif; font-weight: bold;`);
       text.textContent = `${line.distance}mm`;
       
       // 모든 요소를 컨테이너에 추가
       measurementContainer.appendChild(mainLine);
       measurementContainer.appendChild(startCircle);
       measurementContainer.appendChild(endCircle);
+      measurementContainer.appendChild(textBackground);
       measurementContainer.appendChild(text);
       
       svgOverlayRef.current.appendChild(measurementContainer);
