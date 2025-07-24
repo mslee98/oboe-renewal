@@ -5,9 +5,22 @@ import { ArchisketchProvider, useArchisketch } from "../context/ArchisketchConte
 import { ToolProvider, useTool } from "../context/ToolContext";
 import { Application, extend } from '@pixi/react';
 import { Graphics } from 'pixi.js';
+import defaultCursor from '../assets/default-cursor.svg';
+import drawCursor from '../assets/draw-cursor.svg';
+import CornerComponent from '../components/CornerComponent';
 
 // Graphics를 pixiGraphics로 등록
 extend({ Graphics });
+
+// 커스텀 커서 CSS 스타일 추가
+const cursorStyles = `
+  .cursor-default {
+    cursor: url('${defaultCursor}') 4 4, auto;
+  }
+  .cursor-draw {
+    cursor: url('${drawCursor}') 12 12, crosshair;
+  }
+`;
 
 // Interior2ds 내부 컴포넌트
 const Interior2dsContent = () => {
@@ -16,6 +29,17 @@ const Interior2dsContent = () => {
     const [canvasWidth, setCanvasWidth] = useState("100%");
     const containerRef = useRef(null);
     const { isExpanded, isHovered, isMobileOpen } = useSidebar();
+
+    // 커서 스타일을 DOM에 주입
+    useEffect(() => {
+        const style = document.createElement('style');
+        style.textContent = cursorStyles;
+        document.head.appendChild(style);
+        
+        return () => {
+            document.head.removeChild(style);
+        };
+    }, []);
 
     useEffect(() => {
         const updateDimensions = () => {
@@ -71,10 +95,20 @@ const Interior2dsContent = () => {
         console.log("Is wall drawing mode:", isWallDrawingMode());
     }, [selectedTool, selectedMode]);
 
+    // 모드별 커서 클래스 결정
+    const getCursorClass = () => {
+        if (selectedTool === "cursor") {
+            return "cursor-default";
+        } else if (selectedTool === "wall-drawing") {
+            return "cursor-draw";
+        }
+        return "cursor-default";
+    };
+
     return (
         <div 
             ref={containerRef} 
-            className="flex h-full overflow-hidden bg-white dark:bg-gray-900" 
+            className={`flex h-full overflow-hidden bg-white dark:bg-gray-900 ${getCursorClass()}`}
             style={{ 
                 height: canvasHeight,
                 position: 'relative'
@@ -104,7 +138,7 @@ const Interior2dsContent = () => {
 const PixiCanvas = () => {
   const parentRef = useRef(null);
   const { addCorner, addWallWithCorners, updateCorner, corners, walls } = useArchisketch();
-  const { selectedTool, selectedMode } = useTool();
+  const { selectedTool, selectedMode, drawingMode } = useTool();
   
   // 코너 근처 감지 함수
   const findNearbyCorner = useCallback((point, threshold = 40) => {
@@ -147,8 +181,24 @@ const PixiCanvas = () => {
   const [previewPoint, setPreviewPoint] = useState(null);
   const [snappedCorner, setSnappedCorner] = useState(null);
   const [isSnapped, setIsSnapped] = useState(false);
+  
+  // 가상 코너 드래그 관련 상태
+  const [isDragging, setIsDragging] = useState(false);
+  const [virtualCorner, setVirtualCorner] = useState(null);
+  const [dragTarget, setDragTarget] = useState(null);
+
 
   const handleStageClick = useCallback((event) => {
+    console.log("=== 클릭 이벤트 발생 ===");
+    console.log("현재 도구:", selectedTool);
+    console.log("현재 모드:", selectedMode);
+    console.log("그리기 모드:", drawingMode);
+    
+    // 커서 모드일 때는 클릭 이벤트 무시
+    if (selectedTool === "cursor") {
+      console.log("커서 모드 - 클릭 이벤트 무시");
+      return;
+    }
     
     // 벽 그리기 모드가 아닌 경우에도 클릭 이벤트는 발생하는지 확인
     if (selectedTool !== "wall-drawing" || selectedMode !== "draw") {
@@ -215,173 +265,14 @@ const PixiCanvas = () => {
       addWallWithCorners(startCorner, endCornerToUse);
       
       
-      // 상태 초기화
-      setStartCorner(null);
-      setIsDrawing(false);
+      // 끝점을 새로운 시작점으로 설정 (연속 그리기)
+      setStartCorner(endCornerToUse);
+      setIsDrawing(true);
       setPreviewPoint(null);
       setSnappedCorner(null);
       setIsSnapped(false);
     }
   }, [selectedTool, selectedMode, addCorner, addWallWithCorners, isDrawing, startCorner, snappedCorner, previewPoint]);
-
-  // 코너 컴포넌트
-  const CornerComponent = useCallback(({ corner, onCornerUpdate, isSnapped, snappedCorner }) => {
-    const [isHovered, setIsHovered] = useState(false);
-    const [isDragging, setIsDragging] = useState(false);
-    const [dragStart, setDragStart] = useState(null);
-    const [dragOffset, setDragOffset] = useState(null);
-    
-    // 코너 클릭 시 벽 그리기 시작
-    const handleCornerClick = useCallback((event) => {
-        
-      if (isSnapped) {
-        return;
-      }
-
-      if (selectedTool !== "wall-drawing" || selectedMode !== "draw") return;
-      
-      if (!isDrawing) {
-        // 첫 번째 클릭 - 이 코너를 시작점으로 설정
-        setStartCorner(corner);
-        setIsDrawing(true);
-      } else {
-        // 두 번째 클릭 - 이 코너를 끝점으로 설정
-        if (startCorner.archiId !== corner.archiId) {
-          console.log("코너에서 벽 그리기 완료:", { start: startCorner, end: corner });
-          
-          // 벽 생성
-          addWallWithCorners(startCorner, corner);
-          
-          // 상태 초기화
-          setStartCorner(null);
-          setIsDrawing(false);
-          setPreviewPoint(null);
-          console.log("상태 초기화 완료");
-        } else {
-          console.log("같은 코너를 두 번 클릭함 - 무시");
-        }
-      }
-    }, [selectedTool, selectedMode, isDrawing, startCorner, addWallWithCorners]);
-
-    const handlePointerOver = useCallback(() => {
-
-        console.log("2222222222222")
-        console.log("2222222222222")
-        console.log("2222222222222")
-        console.log("isSnapped:", isSnapped);
-        console.log("snappedCorner:", snappedCorner);
-
-        // 스냅된 상태일 때는 호버 비활성화
-        if (isSnapped) {
-            console.log("스냅된 상태일 때는 호버 비활성화");
-            return;
-        }
-
-      setIsHovered(true);
-    }, [isSnapped]);
-
-    const handlePointerOut = useCallback(() => {
-      setIsHovered(false);
-    }, [corner.archiId]);
-
-    const handlePointerDown = useCallback((event) => {
-      // 벽 그리기 모드일 때는 드래그 비활성화
-      if (selectedTool === "wall-drawing" && selectedMode === "draw") {
-        return; // 드래그 시작하지 않음
-      }
-
-            if (isSnapped) {
-        return;
-      }
-      
-      setIsDragging(true);
-      const startPoint = event.data.getLocalPosition(event.currentTarget.parent);
-      setDragStart(startPoint);
-      setDragOffset({
-        x: startPoint.x - corner.position.x,
-        y: startPoint.y - corner.position.z
-      });
-    }, [corner, selectedTool, selectedMode]);
-
-    const handlePointerMove = useCallback((event) => {
-      // 벽 그리기 모드일 때는 드래그 비활성화
-      if (selectedTool === "wall-drawing" && selectedMode === "draw") {
-        return;
-      }
-      
-      if (!isDragging || !dragOffset) return;
-      
-      const currentPoint = event.data.getLocalPosition(event.currentTarget.parent);
-      const newX = currentPoint.x - dragOffset.x;
-      const newZ = currentPoint.y - dragOffset.y;
-      
-      // 미리보기용 임시 위치 계산 (실제 업데이트는 드래그 종료 시)
-      setDragStart({ x: newX, z: newZ });
-    }, [isDragging, dragOffset, selectedTool, selectedMode]);
-
-    const handlePointerUp = useCallback(() => {
-      // 벽 그리기 모드일 때는 드래그 비활성화
-      if (selectedTool === "wall-drawing" && selectedMode === "draw") {
-        return;
-      }
-      
-      if (isDragging && dragStart && typeof dragStart === 'object') {
-        // 드래그 종료 시 실제 위치 업데이트
-        onCornerUpdate(corner.archiId, {
-          position: {
-            x: dragStart.x,
-            y: corner.position.y,
-            z: dragStart.z
-          }
-        });
-      }
-      setIsDragging(false);
-      setDragStart(null);
-      setDragOffset(null);
-    }, [isDragging, dragStart, corner, onCornerUpdate, selectedTool, selectedMode]);
-
-    return (
-      <pixiGraphics
-        x={isDragging && dragStart && typeof dragStart === 'object' ? dragStart.x : corner.position.x}
-        y={isDragging && dragStart && typeof dragStart === 'object' ? dragStart.z : corner.position.z}
-        draw={(graphics) => {
-          graphics.clear();
-          
-          // 호버 영역을 위한 큰 투명 원 (호버 감지용)
-          graphics.setFillStyle({ color: 0xffffff, alpha: 0 });
-          graphics.circle(0, 0, 30); // 30px 반지름으로 호버 영역 확장
-          graphics.fill();
-          
-          // 호버 상태에 따른 색상 변경
-          const fillColor = isHovered ? 0xf59e0b : 0xfbbf24; // 호버 시 더 진한 노란색
-          const strokeColor = isHovered ? 0x92400e : 0x92400e;
-          const strokeWidth = isHovered ? 3 : 2;
-          const radius = isHovered ? 13 : 12; // 기본 크기도 약간 키움
-          
-          // 드래그 중일 때는 반투명하게 표시
-          const alpha = isDragging ? 0.7 : 1;
-          
-          graphics.setFillStyle({ color: fillColor, alpha });
-          graphics.circle(0, 0, radius);
-          graphics.fill();
-          
-          // 테두리
-          graphics.setStrokeStyle({ color: strokeColor, width: strokeWidth, alpha });
-          graphics.circle(0, 0, radius);
-          graphics.stroke();
-        }}
-        interactive={!isSnapped}
-        buttonMode={true}
-        cursor={isDragging ? "grabbing" : (selectedTool === "wall-drawing" ? "crosshair" : "grab")}
-        onPointerOver={handlePointerOver}
-        onPointerOut={handlePointerOut}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onClick={handleCornerClick}
-      />
-    );
-  }, []);
 
   // 마우스 이동 이벤트 핸들러 (PixiJS 이벤트)
   const handleStageMouseMove = useCallback((event) => {
@@ -409,6 +300,86 @@ const PixiCanvas = () => {
     }
   }, [isDrawing, startCorner, snapToGridOrCorner]);
 
+  // 가상 코너 드래그 시작 핸들러
+  const handleDragStart = useCallback((corner) => {
+    console.log("가상 코너 드래그 시작:", corner.archiId, corner.position);
+    
+    // 가상 코너 생성
+    const virtualCornerData = {
+      archiId: corner.archiId,
+      position: { x: corner.position.x, y: corner.position.y, z: corner.position.z },
+      isVirtual: true
+    };
+    
+    console.log("생성된 가상 코너:", virtualCornerData);
+    
+    setVirtualCorner(virtualCornerData);
+    setDragTarget(corner);
+    setIsDragging(true);
+  }, []);
+
+  // 가상 코너 드래그 이동 핸들러
+  const handleDragMove = useCallback((event) => {
+    if (isDragging && virtualCorner && selectedTool === "cursor") {
+      const newPosition = event.data.getLocalPosition(event.currentTarget.parent);
+      
+      console.log("드래그 이벤트 좌표:", {
+        global: event.data.global,
+        local: event.data.getLocalPosition(event.currentTarget),
+        parentLocal: event.data.getLocalPosition(event.currentTarget.parent),
+        newPosition
+      });
+      
+      // 가상 코너 위치 업데이트
+      setVirtualCorner({
+        ...virtualCorner,
+        position: { x: newPosition.x, y: virtualCorner.position.y, z: newPosition.y }
+      });
+      
+      console.log("가상 코너 드래그 중:", virtualCorner.archiId, newPosition);
+    }
+  }, [isDragging, virtualCorner, selectedTool]);
+
+  // 가상 코너 드래그 종료 핸들러
+  const handleDragEnd = useCallback(() => {
+    if (isDragging && virtualCorner && dragTarget) {
+      console.log("가상 코너 드래그 종료:", dragTarget.archiId, virtualCorner.position);
+      
+      // 실제 코너 위치를 가상 코너 위치로 업데이트
+      updateCorner(dragTarget.archiId, {
+        position: {
+          x: virtualCorner.position.x,
+          y: dragTarget.position.y,
+          z: virtualCorner.position.z
+        }
+      });
+      
+      // 상태 초기화
+      setIsDragging(false);
+      setVirtualCorner(null);
+      setDragTarget(null);
+    }
+  }, [isDragging, virtualCorner, dragTarget, updateCorner]);
+
+  // ESC 키로 연속 그리기 중단
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && isDrawing) {
+        console.log("ESC 키로 연속 그리기 중단");
+        setStartCorner(null);
+        setIsDrawing(false);
+        setPreviewPoint(null);
+        setSnappedCorner(null);
+        setIsSnapped(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isDrawing]);
+
   // DOM 마우스 이벤트 제거 - PixiJS 이벤트만 사용
 
   return (
@@ -435,41 +406,7 @@ const PixiCanvas = () => {
         eventMode="static"
       >
         {/* 그리드 */}
-        <pixiGraphics
-          draw={(graphics) => {
-            graphics.clear();
-            
-            // 부모 요소의 실제 크기 가져오기
-            const rect = parentRef.current?.getBoundingClientRect();
-            const width = rect?.width || 800;
-            const height = rect?.height || 600;
-            
-            console.log('그리드 그리기:', width, height);
-            
-            const gridSize = 40;
-            
-            // 그리드 선 그리기 - PixiJS v8 문법
-            graphics.setStrokeStyle({ 
-              color: 0xcccccc, 
-              width: 1,
-              alpha: 0.5 
-            });
-            
-            // 세로선 그리기
-            for (let i = 0; i <= width / gridSize; i++) {
-              graphics.moveTo(i * gridSize, 0);
-              graphics.lineTo(i * gridSize, height);
-            }
-            
-            // 가로선 그리기
-            for (let i = 0; i <= height / gridSize; i++) {
-              graphics.moveTo(0, i * gridSize);
-              graphics.lineTo(width, i * gridSize);
-            }
-            
-            graphics.stroke();
-          }}
-        />
+        <PixiGrid parentRef={parentRef}/>
         
         {/* 클릭 가능한 배경 */}
         <pixiGraphics
@@ -486,7 +423,7 @@ const PixiCanvas = () => {
           }}
           interactive={true}
           buttonMode={true}
-          cursor="crosshair"
+          cursor={selectedTool === "cursor" ? "default" : "crosshair"}
           onPointerDown={handleStageClick}
           onPointerMove={handleStageMouseMove}
         />
@@ -532,11 +469,77 @@ const PixiCanvas = () => {
           <CornerComponent 
             key={corner.archiId} 
             corner={corner} 
-            onCornerUpdate={updateCorner}
             isSnapped={isSnapped}
             snappedCorner={snappedCorner}
+            onCornerClick={(clickedCorner) => {
+              if (!isDrawing) {
+                // 첫 번째 클릭 - 이 코너를 시작점으로 설정
+                setStartCorner(clickedCorner);
+                setIsDrawing(true);
+              } else {
+                // 두 번째 클릭 - 이 코너를 끝점으로 설정
+                if (startCorner.archiId !== clickedCorner.archiId) {
+                  console.log("코너에서 벽 그리기 완료:", { start: startCorner, end: clickedCorner });
+                  
+                  // 벽 생성
+                  addWallWithCorners(startCorner, clickedCorner);
+                  
+                  // 끝점을 새로운 시작점으로 설정 (연속 그리기)
+                  setStartCorner(clickedCorner);
+                  setIsDrawing(true);
+                  setPreviewPoint(null);
+                  console.log("상태 초기화 완료");
+                } else {
+                  console.log("같은 코너를 두 번 클릭함 - 무시");
+                }
+              }
+            }}
+            onDragStart={handleDragStart}
+            isDragging={isDragging}
+            dragTarget={dragTarget}
           />
         ))}
+        
+        {/* 가상 코너 렌더링 */}
+        {isDragging && virtualCorner && (() => {
+          console.log("가상 코너 렌더링:", virtualCorner.position);
+          return (
+            <pixiGraphics
+              x={virtualCorner.position.x}
+              y={virtualCorner.position.z}
+              draw={(graphics) => {
+                graphics.clear();
+                
+                // 호버 영역을 위한 큰 투명 원 (호버 감지용)
+                graphics.setFillStyle({ color: 0xffffff, alpha: 0 });
+                graphics.circle(0, 0, 30);
+                graphics.fill();
+                
+                // 가상 코너는 반투명하게 표시
+                const fillColor = 0xf59e0b;
+                const strokeColor = 0x92400e;
+                const strokeWidth = 3;
+                const radius = 13;
+                const alpha = 0.7;
+                
+                graphics.setFillStyle({ color: fillColor, alpha });
+                graphics.circle(0, 0, radius);
+                graphics.fill();
+                
+                // 테두리
+                graphics.setStrokeStyle({ color: strokeColor, width: strokeWidth, alpha });
+                graphics.circle(0, 0, radius);
+                graphics.stroke();
+              }}
+              interactive={true}
+              buttonMode={true}
+              cursor="grabbing"
+              onPointerMove={handleDragMove}
+              onPointerUp={handleDragEnd}
+              onPointerUpOutside={handleDragEnd}
+            />
+          );
+        })()}
         
         {/* 미리보기 라인 */}
         {isDrawing && startCorner && previewPoint && (
@@ -560,6 +563,47 @@ const PixiCanvas = () => {
             }}
           />
         )}
+
+
+
+        {/* 드래그 미리보기 벽들 */}
+        {/* {dragTarget && dragPreviewWalls.length > 0 && (
+          <>
+                          {console.log("드래그 미리보기 렌더링:", { dragTarget, dragPreviewWalls })}
+            {dragPreviewWalls.map(wall => {
+              const otherCornerId = wall.corners.find(id => id !== dragTarget.archiId);
+              const otherCorner = corners.find(c => c.archiId === otherCornerId);
+              
+              if (!otherCorner) return null;
+              
+              return (
+                <pixiGraphics
+                  key={`preview-${wall.archiId}`}
+                  draw={(graphics) => {
+                    console.log("드래그 미리보기 벽 그리기:", {
+                      wall,
+                      otherCorner: otherCorner.position,
+                      previewStart: wall.previewStart,
+                      previewEnd: wall.previewEnd
+                    });
+                    
+                    graphics.clear();
+                    graphics.setStrokeStyle({ 
+                      color: 0x3b82f6, // 파란색
+                      width: 15,
+                      alpha: 0.6
+                    });
+                    
+                    // previewStart에서 previewEnd로 선 그리기
+                    graphics.moveTo(wall.previewStart.x, wall.previewStart.z);
+                    graphics.lineTo(wall.previewEnd.x, wall.previewEnd.z);
+                    graphics.stroke();
+                  }}
+                />
+              );
+            })}
+          </>
+        )} */}
         
         {/* 다음 포인트 미리보기 */}
         {isDrawing && previewPoint && (
@@ -593,7 +637,7 @@ const PixiCanvas = () => {
             }}
             interactive={true}
             buttonMode={true}
-            cursor="crosshair"
+            cursor={selectedTool === "cursor" ? "default" : "crosshair"}
             onPointerDown={handleStageClick}
           />
         )}
@@ -601,6 +645,46 @@ const PixiCanvas = () => {
     </div>
   );
 };
+
+const PixiGrid = ({parentRef}) => {
+  return (
+    <pixiGraphics
+          draw={(graphics) => {
+            graphics.clear();
+            
+            // 부모 요소의 실제 크기 가져오기
+            const rect = parentRef.current?.getBoundingClientRect();
+            const width = rect?.width || 800;
+            const height = rect?.height || 600;
+            
+            console.log('그리드 그리기:', width, height);
+            
+            const gridSize = 40;
+            
+            // 그리드 선 그리기 - PixiJS v8 문법
+            graphics.setStrokeStyle({ 
+              color: 0xcccccc, 
+              width: 1,
+              alpha: 0.5 
+            });
+            
+            // 세로선 그리기
+            for (let i = 0; i <= width / gridSize; i++) {
+              graphics.moveTo(i * gridSize, 0);
+              graphics.lineTo(i * gridSize, height);
+            }
+            
+            // 가로선 그리기
+            for (let i = 0; i <= height / gridSize; i++) {
+              graphics.moveTo(0, i * gridSize);
+              graphics.lineTo(width, i * gridSize);
+            }
+            
+            graphics.stroke();
+          }}
+        />
+  )
+}
 
 const Interior2ds = () => {
   return (
