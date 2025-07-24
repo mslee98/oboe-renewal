@@ -446,149 +446,174 @@ export const ArchisketchProvider = ({ children }) => {
     
     const foundRooms = [];
     
-    // 면이 있는지 확인하는 함수 (Triangulation 방식)
-    const findMinimalRooms = () => {
-      console.log('🔍 최소 Room 영역 탐지 시작');
+    // 벽으로 완전히 둘러싸인 진짜 Room 감지
+    const findRealRooms = () => {
+      console.log('🏠 벽으로 둘러싸인 진짜 Room 감지 시작');
       
-      // 모든 삼각형부터 시작 (가장 기본적인 면)
-      for (let i = 0; i < corners.length; i++) {
-        for (let j = i + 1; j < corners.length; j++) {
-          for (let k = j + 1; k < corners.length; k++) {
-            const corner1 = corners[i];
-            const corner2 = corners[j];
-            const corner3 = corners[k];
-            
-            // 이 3개 코너가 모두 벽으로 연결되어 있는지 확인
-            const hasWall12 = walls.some(wall => 
-              (wall.corners.includes(corner1.archiId) && wall.corners.includes(corner2.archiId))
-            );
-            const hasWall23 = walls.some(wall => 
-              (wall.corners.includes(corner2.archiId) && wall.corners.includes(corner3.archiId))
-            );
-            const hasWall31 = walls.some(wall => 
-              (wall.corners.includes(corner3.archiId) && wall.corners.includes(corner1.archiId))
-            );
-            
-            if (hasWall12 && hasWall23 && hasWall31) {
-              const triangleCorners = [corner1.archiId, corner2.archiId, corner3.archiId];
-              const triangleKey = triangleCorners.slice().sort().join(',');
-              
-              if (!existingRoomCorners.has(triangleKey)) {
-                console.log(`🔺 삼각형 발견: [${triangleCorners.join(',')}]`);
-                
-                // 면적 계산
-                const positions = [
-                  { x: corner1.position.x, z: corner1.position.z },
-                  { x: corner2.position.x, z: corner2.position.z },
-                  { x: corner3.position.x, z: corner3.position.z }
-                ];
-                const area = calculatePolygonArea(positions);
-                
-                if (area > 500) { // 최소 면적 필터
-                  foundRooms.push({
-                    corners: triangleCorners,
-                    area: area,
-                    type: 'triangle'
-                  });
-                  console.log(`  ✅ 유효한 삼각형 (면적: ${area})`);
-                } else {
-                  console.log(`  ❌ 면적 너무 작음 (${area})`);
-                }
-              }
-            }
-          }
+      // 1. 벽 연결 매핑 생성 (정확한 벽 존재 확인용)
+      const wallConnections = new Set();
+      walls.forEach(wall => {
+        const [corner1, corner2] = wall.corners;
+        const connectionKey1 = `${corner1}-${corner2}`;
+        const connectionKey2 = `${corner2}-${corner1}`;
+        wallConnections.add(connectionKey1);
+        wallConnections.add(connectionKey2);
+      });
+      
+      // 2. 코너 간 인접 관계 (벽이 있는 경우만)
+      const graph = {};
+      corners.forEach(corner => {
+        graph[corner.archiId] = [];
+      });
+      
+      walls.forEach(wall => {
+        const [corner1, corner2] = wall.corners;
+        if (graph[corner1] && graph[corner2]) {
+          graph[corner1].push(corner2);
+          graph[corner2].push(corner1);
         }
-      }
+      });
       
-      // 사각형도 확인 (4개 코너)
-      for (let i = 0; i < corners.length; i++) {
-        for (let j = i + 1; j < corners.length; j++) {
-          for (let k = j + 1; k < corners.length; k++) {
-            for (let l = k + 1; l < corners.length; l++) {
-              const cornerIds = [corners[i].archiId, corners[j].archiId, corners[k].archiId, corners[l].archiId];
-              
-              // 사각형의 가능한 연결 패턴들 확인
-              const possibleQuads = [
-                [0, 1, 2, 3], // 순서대로
-                [0, 1, 3, 2], // 다른 순서
-                [0, 2, 1, 3], // 또 다른 순서
-                [0, 2, 3, 1], 
-                [0, 3, 1, 2],
-                [0, 3, 2, 1]
-              ];
-              
-              for (const pattern of possibleQuads) {
-                const orderedCorners = pattern.map(idx => cornerIds[idx]);
+      console.log('벽 연결 확인:', walls.map(w => `${w.corners[0]}-${w.corners[1]}`));
+      
+      // 3. 벽으로만 이루어진 폐곡선 찾기
+      const findWalledRooms = () => {
+        const foundRooms = [];
+        const checkedPaths = new Set();
+        
+        const findRoomFromNode = (startNode, maxDepth = 15) => {
+          const stack = [{ node: startNode, path: [startNode], visited: new Set([startNode]) }];
+          
+          while (stack.length > 0) {
+            const { node, path, visited } = stack.pop();
+            
+            if (path.length > maxDepth) continue;
+            
+            const neighbors = graph[node] || [];
+            for (const neighbor of neighbors) {
+              if (neighbor === startNode && path.length >= 3) {
+                // 폐곡선 후보 발견! 이제 모든 연결이 벽인지 확인
+                const isValidRoom = validateRoomWalls(path);
                 
-                // 이 순서로 벽들이 연결되어 있는지 확인
-                let isValidQuad = true;
-                for (let m = 0; m < 4; m++) {
-                  const corner1 = orderedCorners[m];
-                  const corner2 = orderedCorners[(m + 1) % 4];
+                if (isValidRoom) {
+                  const sortedPath = [...path].sort();
+                  const pathKey = sortedPath.join(',');
                   
-                  const hasWall = walls.some(wall => 
-                    (wall.corners.includes(corner1) && wall.corners.includes(corner2))
-                  );
-                  
-                  if (!hasWall) {
-                    isValidQuad = false;
-                    break;
-                  }
-                }
-                
-                if (isValidQuad) {
-                  const quadKey = orderedCorners.slice().sort().join(',');
-                  
-                  if (!existingRoomCorners.has(quadKey)) {
-                    // 이 사각형이 내부에 대각선(벽)을 가지고 있는지 확인
-                    const hasDiagonalWalls = () => {
-                      // 사각형의 대각선 확인 (모든 가능한 대각선 조합)
-                      for (let x = 0; x < 4; x++) {
-                        for (let y = x + 2; y < 4; y++) {
-                          if (y - x === 2 || (x === 0 && y === 3)) { // 대각선 관계
-                            const corner1 = orderedCorners[x];
-                            const corner2 = orderedCorners[y];
-                            
-                            const hasDiagonal = walls.some(wall => 
-                              (wall.corners.includes(corner1) && wall.corners.includes(corner2))
-                            );
-                            
-                            if (hasDiagonal) {
-                              console.log(`  대각선 벽 발견: ${corner1} - ${corner2}`);
-                              return true;
-                            }
-                          }
-                        }
-                      }
-                      return false;
-                    };
+                  if (!checkedPaths.has(pathKey) && !existingRoomCorners.has(pathKey)) {
+                    const positions = path.map(cornerId => {
+                      const corner = corners.find(c => c.archiId === cornerId);
+                      return { x: corner.position.x, z: corner.position.z };
+                    });
+                    const area = calculatePolygonArea(positions);
                     
-                    if (!hasDiagonalWalls()) {
-                      const positions = orderedCorners.map(cornerId => {
-                        const corner = corners.find(c => c.archiId === cornerId);
-                        return { x: corner.position.x, z: corner.position.z };
+                    if (area > 500) {
+                      foundRooms.push({
+                        corners: [...path],
+                        area: area,
+                        type: `${path.length}각형`,
+                        key: pathKey
                       });
-                      const area = calculatePolygonArea(positions);
-                      
-                      if (area > 1000) {
-                        foundRooms.push({
-                          corners: orderedCorners,
-                          area: area,
-                          type: 'quad'
-                        });
-                        console.log(`🟦 사각형 발견: [${orderedCorners.join(',')}] (면적: ${area})`);
-                      }
-                    } else {
-                      console.log(`🚫 사각형 스킵 (내부에 대각선 존재): [${orderedCorners.join(',')}]`);
+                      checkedPaths.add(pathKey);
+                      console.log(`🏠 진짜 Room 발견: ${path.length}각형 [${path.join(',')}] (면적: ${area})`);
                     }
                   }
-                  break; // 하나의 유효한 패턴을 찾으면 더 이상 확인하지 않음
                 }
+              } else if (!visited.has(neighbor) && neighbor !== path[path.length - 2]) {
+                const newVisited = new Set(visited);
+                newVisited.add(neighbor);
+                stack.push({
+                  node: neighbor,
+                  path: [...path, neighbor],
+                  visited: newVisited
+                });
               }
             }
           }
+        };
+        
+        // 벽 연결이 정확한지 확인하고 내부 분할 벽 체크하는 함수
+        const validateRoomWalls = (roomPath) => {
+          console.log(`  🔍 Room 벽 검증: [${roomPath.join(',')}]`);
+          
+          // 1. 경계 벽 존재 확인
+          for (let i = 0; i < roomPath.length; i++) {
+            const corner1 = roomPath[i];
+            const corner2 = roomPath[(i + 1) % roomPath.length];
+            const connectionKey = `${corner1}-${corner2}`;
+            const reverseKey = `${corner2}-${corner1}`;
+            
+            const hasWall = wallConnections.has(connectionKey) || wallConnections.has(reverseKey);
+            console.log(`    ${corner1} → ${corner2}: ${hasWall ? '✅ 벽 존재' : '❌ 벽 없음'}`);
+            
+            if (!hasWall) {
+              console.log(`    ❌ Room 무효: ${corner1}과 ${corner2} 사이에 벽이 없음`);
+              return false;
+            }
+          }
+          
+          // 2. 내부에 분할하는 대각선 벽이 있는지 확인
+          const hasDividingWalls = checkForDividingWalls(roomPath);
+          if (hasDividingWalls) {
+            console.log(`    ❌ Room 무효: 내부에 분할하는 벽이 존재함`);
+            return false;
+          }
+          
+          console.log(`    ✅ Room 유효: 모든 연결이 벽이고 내부 분할 없음`);
+          return true;
+        };
+        
+        // 내부 분할 벽이 있는지 확인하는 함수
+        const checkForDividingWalls = (roomPath) => {
+          console.log(`    🔍 내부 분할 벽 검사: [${roomPath.join(',')}]`);
+          
+          // Room의 모든 코너 조합에서 대각선/내부 벽 찾기
+          for (let i = 0; i < roomPath.length; i++) {
+            for (let j = i + 2; j < roomPath.length; j++) {
+              // 인접하지 않은 코너들 사이의 연결 확인
+              if (j === roomPath.length - 1 && i === 0) continue; // 마지막-첫번째는 경계선
+              
+              const corner1 = roomPath[i];
+              const corner2 = roomPath[j];
+              const connectionKey1 = `${corner1}-${corner2}`;
+              const connectionKey2 = `${corner2}-${corner1}`;
+              
+              const hasDiagonalWall = wallConnections.has(connectionKey1) || wallConnections.has(connectionKey2);
+              
+              if (hasDiagonalWall) {
+                console.log(`    🚫 분할 벽 발견: ${corner1} - ${corner2}`);
+                return true;
+              }
+            }
+          }
+          
+          console.log(`    ✅ 분할 벽 없음`);
+          return false;
+        };
+        
+        // 모든 코너에서 시작해서 Room 찾기
+        corners.forEach(corner => {
+          findRoomFromNode(corner.archiId);
+        });
+        
+        return foundRooms;
+      };
+      
+      const validRooms = findWalledRooms();
+      
+      // 4. 면적 기준으로 정렬하고 중복 제거
+      validRooms.sort((a, b) => b.area - a.area);
+      const uniqueRooms = [];
+      const usedKeys = new Set();
+      
+      for (const room of validRooms) {
+        if (!usedKeys.has(room.key)) {
+          uniqueRooms.push(room);
+          usedKeys.add(room.key);
+          foundRooms.push(room);
         }
       }
+      
+      console.log(`${validRooms.length}개 벽으로 둘러싸인 영역 → ${uniqueRooms.length}개 유효한 Room`);
     };
     
     // 폴리곤 면적 계산 (Shoelace formula)
@@ -605,9 +630,9 @@ export const ArchisketchProvider = ({ children }) => {
     };
 
     // 실제 Room 탐지 및 생성
-    findMinimalRooms();
+    findRealRooms();
     
-    // 찾은 Room들을 실제로 생성
+    // 찾은 Room들을 실제로 생성 (이미 중복 제거됨)
     foundRooms.forEach(roomData => {
       console.log(`🏠 Room 생성: [${roomData.corners.join(',')}] (${roomData.type}, 면적: ${roomData.area})`);
       const newRoom = addRoom(roomData.corners);
@@ -616,7 +641,7 @@ export const ArchisketchProvider = ({ children }) => {
       }
     });
     
-    console.log(`총 ${foundRooms.length}개의 새로운 Room 발견`);
+    console.log(`총 ${foundRooms.length}개의 새로운 Room 생성`);
   }, [corners, walls, rooms, addRoom]);
 
   // 벽이 추가되거나 변경될 때 자동으로 Room 감지
