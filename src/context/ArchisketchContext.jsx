@@ -255,8 +255,8 @@ export const ArchisketchProvider = ({ children }) => {
     
     console.log('업데이트된 벽 목록:', updatedWalls.map(w => `${w.archiId}: ${w.corners.join('-')}`));
 
-    // 2단계: 중복 벽 제거 (같은 두 코너를 연결하는 벽이 여러 개 있는 경우)
-    console.log('=== 중복 벽 제거 단계 ===');
+    // 2단계: 중복 벽 제거 및 무효 벽 정리
+    console.log('=== 벽 정리 단계 ===');
     const uniqueWalls = [];
     const seenConnections = new Set();
 
@@ -267,6 +267,24 @@ export const ArchisketchProvider = ({ children }) => {
 
       console.log(`벽 ${wall.archiId} (${wall.corners.join('-')}) → 연결키: ${connectionKey}`);
 
+      // 1. 자기 자신 연결 벽 제거 (이미 위에서 처리했지만 한번 더 확인)
+      if (corner1 === corner2) {
+        console.log(`❌ 자기 참조 벽 제거: ${wall.archiId} (${connectionKey})`);
+        wallsToRemove.add(wall.archiId);
+        return;
+      }
+
+      // 2. 존재하지 않는 코너를 참조하는 벽 제거
+      const corner1Exists = corners.some(c => c.archiId === corner1);
+      const corner2Exists = corners.some(c => c.archiId === corner2);
+      
+      if (!corner1Exists || !corner2Exists) {
+        console.log(`❌ 존재하지 않는 코너 참조 벽 제거: ${wall.archiId} (${corner1}:${corner1Exists}, ${corner2}:${corner2Exists})`);
+        wallsToRemove.add(wall.archiId);
+        return;
+      }
+
+      // 3. 중복 연결 벽 제거
       if (seenConnections.has(connectionKey)) {
         console.log(`❌ 중복 벽 제거: ${wall.archiId} (연결: ${connectionKey})`);
         wallsToRemove.add(wall.archiId);
@@ -296,24 +314,53 @@ export const ArchisketchProvider = ({ children }) => {
       return remainingCorners;
     });
 
-    // 4단계: 방들도 업데이트 (코너 참조 변경)
-    setRooms(prev => prev.map(room => {
-      let updatedCorners = [...room.corners];
-      let hasChanges = false;
+    // 4단계: Room 정리 및 업데이트
+    console.log('=== Room 정리 단계 ===');
+    setRooms(prev => {
+      console.log('정리 전 Room들:', prev.map(r => `${r.archiId}: [${r.corners.join(',')}]`));
+      
+      const updatedRooms = [];
+      const processedRoomKeys = new Set();
+      
+      prev.forEach(room => {
+        let updatedCorners = [...room.corners];
+        let hasChanges = false;
 
-      mergeCornerIds.forEach(mergeId => {
-        const index = updatedCorners.indexOf(mergeId);
-        if (index !== -1) {
-          updatedCorners[index] = targetCornerId;
-          hasChanges = true;
+        // 병합될 코너들을 타겟 코너로 교체
+        mergeCornerIds.forEach(mergeId => {
+          const index = updatedCorners.indexOf(mergeId);
+          if (index !== -1) {
+            updatedCorners[index] = targetCornerId;
+            hasChanges = true;
+          }
+        });
+
+        // 중복 코너 제거
+        updatedCorners = [...new Set(updatedCorners)];
+        
+        // 유효하지 않은 Room 제거 (코너가 3개 미만)
+        if (updatedCorners.length < 3) {
+          console.log(`❌ 무효 Room 제거: ${room.archiId} (코너 ${updatedCorners.length}개)`);
+          return;
         }
+        
+        // 중복 Room 제거 (같은 코너 조합)
+        const roomKey = updatedCorners.slice().sort().join(',');
+        if (processedRoomKeys.has(roomKey)) {
+          console.log(`❌ 중복 Room 제거: ${room.archiId} (키: ${roomKey})`);
+          return;
+        }
+        
+        processedRoomKeys.add(roomKey);
+        const finalRoom = hasChanges ? { ...room, corners: updatedCorners } : room;
+        updatedRooms.push(finalRoom);
+        
+        console.log(`✅ Room 유지/업데이트: ${finalRoom.archiId} [${finalRoom.corners.join(',')}]`);
       });
-
-      // 중복 제거
-      updatedCorners = [...new Set(updatedCorners)];
-
-      return hasChanges ? { ...room, corners: updatedCorners } : room;
-    }));
+      
+      console.log('정리 후 Room들:', updatedRooms.map(r => `${r.archiId}: [${r.corners.join(',')}]`));
+      return updatedRooms;
+    });
 
     console.log('코너 병합 완료');
     
