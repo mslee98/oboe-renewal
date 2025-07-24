@@ -139,7 +139,7 @@ const Interior2dsContent = () => {
 
 const PixiCanvas = () => {
   const parentRef = useRef(null);
-  const { addCorner, addWallWithCorners, updateCorner, corners, walls } = useArchisketch();
+  const { addCorner, addWallWithCorners, updateCorner, corners, walls, rooms, deleteRoom } = useArchisketch();
   const { selectedTool, selectedMode, drawingMode } = useTool();
   
   // 코너 근처 감지 함수
@@ -368,6 +368,75 @@ const PixiCanvas = () => {
           onPointerMove={handleStageMouseMove}
         />
         
+        {/* Room들 렌더링 (벽보다 아래에) */}
+        {rooms.map(room => {
+          const roomCorners = room.corners.map(cornerId => 
+            corners.find(c => c.archiId === cornerId)
+          ).filter(Boolean);
+          
+          if (roomCorners.length < 3) {
+            console.log('Room 렌더링 스킵 - 코너 부족:', room.archiId, roomCorners.length);
+            return null;
+          }
+          
+          // 코너들을 시계방향으로 정렬 (올바른 폴리곤 그리기를 위해)
+          const sortedCorners = [...roomCorners].sort((a, b) => {
+            const centerX = roomCorners.reduce((sum, c) => sum + c.position.x, 0) / roomCorners.length;
+            const centerZ = roomCorners.reduce((sum, c) => sum + c.position.z, 0) / roomCorners.length;
+            
+            const angleA = Math.atan2(a.position.z - centerZ, a.position.x - centerX);
+            const angleB = Math.atan2(b.position.z - centerZ, b.position.x - centerX);
+            
+            return angleA - angleB;
+          });
+          
+          console.log(`Room ${room.archiId} 렌더링:`, sortedCorners.map(c => `${c.archiId}(${c.position.x},${c.position.z})`));
+          
+          return (
+            <pixiGraphics
+              key={room.archiId}
+              draw={(graphics) => {
+                graphics.clear();
+                
+                // Room 영역 채우기
+                graphics.setFillStyle({ 
+                  color: 0x3b82f6, // 파란색
+                  alpha: 0.15 // 조금 더 진하게
+                });
+                
+                // 폴리곤 그리기 (정렬된 순서로)
+                graphics.moveTo(sortedCorners[0].position.x, sortedCorners[0].position.z);
+                sortedCorners.slice(1).forEach(corner => {
+                  graphics.lineTo(corner.position.x, corner.position.z);
+                });
+                graphics.closePath();
+                graphics.fill();
+                
+                // Room 테두리
+                graphics.setStrokeStyle({ 
+                  color: 0x3b82f6, 
+                  width: 1,
+                  alpha: 0.4
+                });
+                graphics.stroke();
+                
+                // Room 라벨 (중심점에)
+                const centerX = sortedCorners.reduce((sum, c) => sum + c.position.x, 0) / sortedCorners.length;
+                const centerZ = sortedCorners.reduce((sum, c) => sum + c.position.z, 0) / sortedCorners.length;
+                
+                // Room ID 표시용 원
+                graphics.setFillStyle({ color: 0x3b82f6, alpha: 0.8 });
+                graphics.circle(centerX, centerZ, 6);
+                graphics.fill();
+                
+                graphics.setFillStyle({ color: 0xffffff });
+                graphics.circle(centerX, centerZ, 4);
+                graphics.fill();
+              }}
+            />
+          );
+        })}
+
         {/* 벽들 렌더링 */}
         {walls.map(wall => {
           const startCorner = corners.find(c => c.archiId === wall.corners[0]);

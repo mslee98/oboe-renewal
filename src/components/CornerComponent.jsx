@@ -11,10 +11,22 @@ const CornerComponent = ({
   const [isHovered, setIsHovered] = useState(false);
   
   const { selectedTool, selectedMode } = useTool();
+  const { deleteCorner } = useArchisketch();
 
-  // 코너 클릭 시 벽 그리기 시작
+  // 코너 클릭 시 벽 그리기 또는 삭제
   const handleCornerClick = useCallback((event) => {
     if (isSnapped) {
+      return;
+    }
+
+    // 커서 모드에서 더블클릭 시 코너 삭제
+    if (selectedTool === "cursor") {
+      if (event.detail === 2) { // 더블클릭
+        console.log("코너 더블클릭 - 삭제:", corner.archiId);
+        deleteCorner(corner.archiId);
+        return;
+      }
+      // 단일 클릭은 무시 (드래그 용도)
       return;
     }
 
@@ -24,7 +36,7 @@ const CornerComponent = ({
     if (onCornerClick) {
       onCornerClick(corner);
     }
-  }, [selectedTool, selectedMode, isSnapped, corner, onCornerClick]);
+  }, [selectedTool, selectedMode, isSnapped, corner, onCornerClick, deleteCorner]);
 
   const handlePointerOver = useCallback(() => {
     // 스냅된 상태일 때는 호버 비활성화
@@ -66,8 +78,15 @@ const CornerComponent = ({
         graphics.fill();
         
         // 호버 상태에 따른 색상 변경
-        const fillColor = isHovered ? 0xf59e0b : 0xfbbf24; // 호버 시 더 진한 노란색
-        const strokeColor = isHovered ? 0x92400e : 0x92400e;
+        let fillColor = isHovered ? 0xf59e0b : 0xfbbf24; // 기본: 호버 시 더 진한 노란색
+        let strokeColor = isHovered ? 0x92400e : 0x92400e;
+        
+        // 커서 모드에서 호버 시 삭제 가능 표시 (빨간색)
+        if (selectedTool === "cursor" && isHovered) {
+          fillColor = 0xef4444; // 빨간색
+          strokeColor = 0xdc2626; // 더 진한 빨간색
+        }
+        
         const strokeWidth = isHovered ? 3 : 2;
         const radius = isHovered ? 13 : 12; // 기본 크기도 약간 키움
         
@@ -83,7 +102,7 @@ const CornerComponent = ({
         graphics.circle(0, 0, radius);
         graphics.stroke();
       }}
-      interactive={!isSnapped && selectedTool === "cursor"}
+      interactive={!isSnapped}
       buttonMode={true}
       cursor={selectedTool === "cursor" ? "grab" : "crosshair"}
       onPointerOver={handlePointerOver}
