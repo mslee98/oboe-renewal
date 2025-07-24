@@ -16,7 +16,6 @@ const Interior2dsContent = () => {
     const [canvasWidth, setCanvasWidth] = useState("100%");
     const containerRef = useRef(null);
     const { isExpanded, isHovered, isMobileOpen } = useSidebar();
-    const { corners } = useArchisketch();
 
     useEffect(() => {
         const updateDimensions = () => {
@@ -147,12 +146,9 @@ const PixiCanvas = () => {
   const [startCorner, setStartCorner] = useState(null);
   const [previewPoint, setPreviewPoint] = useState(null);
   const [snappedCorner, setSnappedCorner] = useState(null);
+  const [isSnapped, setIsSnapped] = useState(false);
 
   const handleStageClick = useCallback((event) => {
-    console.log("=== 클릭 이벤트 발생 ===");
-    console.log("이벤트:", event);
-    console.log("현재 도구:", selectedTool);
-    console.log("현재 모드:", selectedMode);
     
     // 벽 그리기 모드가 아닌 경우에도 클릭 이벤트는 발생하는지 확인
     if (selectedTool !== "wall-drawing" || selectedMode !== "draw") {
@@ -191,15 +187,12 @@ const PixiCanvas = () => {
       
       setStartCorner(startCornerToUse);
       setIsDrawing(true);
-      console.log("그리기 모드 활성화");
     } else {
       // 두 번째 클릭 - 끝점 생성 및 벽 완성
-      
       let endCornerToUse;
       
       // 스냅된 코너가 있고 시작점과 다른 경우 우선 사용
       if (snappedCorner && snappedCorner.archiId !== startCorner.archiId) {
-        console.log("스냅된 코너를 끝점으로 사용:", snappedCorner);
         endCornerToUse = snappedCorner;
       } else {
         // 미리보기 포인트가 있으면 그 위치를 사용, 없으면 클릭 위치 사용
@@ -208,11 +201,8 @@ const PixiCanvas = () => {
         
         if (snappedEndPoint.snappedTo === 'corner' && snappedEndPoint.corner.archiId !== startCorner.archiId) {
           // 기존 코너 재사용 (시작점과 다른 코너인 경우만)
-          console.log("기존 코너를 끝점으로 재사용:", snappedEndPoint.corner);
           endCornerToUse = snappedEndPoint.corner;
         } else {
-          // 새 코너 생성 (그리드에 스냅)
-          console.log("새 끝 코너 생성 (그리드 스냅):", snappedEndPoint);
           endCornerToUse = addCorner({
             x: snappedEndPoint.x,
             y: 0,
@@ -221,23 +211,21 @@ const PixiCanvas = () => {
         }
       }
       
-      console.log("끝 코너:", endCornerToUse);
-      
       // 벽 생성
-      const newWall = addWallWithCorners(startCorner, endCornerToUse);
-      console.log("벽 생성 완료:", newWall);
+      addWallWithCorners(startCorner, endCornerToUse);
+      
       
       // 상태 초기화
       setStartCorner(null);
       setIsDrawing(false);
       setPreviewPoint(null);
       setSnappedCorner(null);
-      console.log("상태 초기화 완료");
+      setIsSnapped(false);
     }
   }, [selectedTool, selectedMode, addCorner, addWallWithCorners, isDrawing, startCorner, snappedCorner, previewPoint]);
 
   // 코너 컴포넌트
-  const CornerComponent = useCallback(({ corner, onCornerUpdate }) => {
+  const CornerComponent = useCallback(({ corner, onCornerUpdate, isSnapped, snappedCorner }) => {
     const [isHovered, setIsHovered] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState(null);
@@ -245,26 +233,24 @@ const PixiCanvas = () => {
     
     // 코너 클릭 시 벽 그리기 시작
     const handleCornerClick = useCallback((event) => {
+        
+      if (isSnapped) {
+        return;
+      }
+
       if (selectedTool !== "wall-drawing" || selectedMode !== "draw") return;
-      
-      // 이벤트 전파 중단
-      event.stopPropagation();
-      
-      console.log("코너 클릭으로 벽 그리기 시작:", corner);
       
       if (!isDrawing) {
         // 첫 번째 클릭 - 이 코너를 시작점으로 설정
         setStartCorner(corner);
         setIsDrawing(true);
-        console.log("코너에서 벽 그리기 모드 활성화");
       } else {
         // 두 번째 클릭 - 이 코너를 끝점으로 설정
         if (startCorner.archiId !== corner.archiId) {
           console.log("코너에서 벽 그리기 완료:", { start: startCorner, end: corner });
           
           // 벽 생성
-          const newWall = addWallWithCorners(startCorner, corner);
-          console.log("벽 생성 완료:", newWall);
+          addWallWithCorners(startCorner, corner);
           
           // 상태 초기화
           setStartCorner(null);
@@ -278,15 +264,23 @@ const PixiCanvas = () => {
     }, [selectedTool, selectedMode, isDrawing, startCorner, addWallWithCorners]);
 
     const handlePointerOver = useCallback(() => {
-        if(selectedTool === "wall-drawing" && selectedMode === "draw") {
-        return;
+
+        console.log("2222222222222")
+        console.log("2222222222222")
+        console.log("2222222222222")
+        console.log("isSnapped:", isSnapped);
+        console.log("snappedCorner:", snappedCorner);
+
+        // 스냅된 상태일 때는 호버 비활성화
+        if (isSnapped) {
+            console.log("스냅된 상태일 때는 호버 비활성화");
+            return;
         }
-      console.log("코너 호버 시작:", corner.archiId);
+
       setIsHovered(true);
-    }, [corner.archiId]);
+    }, [isSnapped]);
 
     const handlePointerOut = useCallback(() => {
-      console.log("코너 호버 종료:", corner.archiId);
       setIsHovered(false);
     }, [corner.archiId]);
 
@@ -294,6 +288,10 @@ const PixiCanvas = () => {
       // 벽 그리기 모드일 때는 드래그 비활성화
       if (selectedTool === "wall-drawing" && selectedMode === "draw") {
         return; // 드래그 시작하지 않음
+      }
+
+            if (isSnapped) {
+        return;
       }
       
       setIsDragging(true);
@@ -358,7 +356,7 @@ const PixiCanvas = () => {
           const fillColor = isHovered ? 0xf59e0b : 0xfbbf24; // 호버 시 더 진한 노란색
           const strokeColor = isHovered ? 0x92400e : 0x92400e;
           const strokeWidth = isHovered ? 3 : 2;
-          const radius = isHovered ? 15 : 12; // 기본 크기도 약간 키움
+          const radius = isHovered ? 13 : 12; // 기본 크기도 약간 키움
           
           // 드래그 중일 때는 반투명하게 표시
           const alpha = isDragging ? 0.7 : 1;
@@ -372,7 +370,7 @@ const PixiCanvas = () => {
           graphics.circle(0, 0, radius);
           graphics.stroke();
         }}
-        interactive={true}
+        interactive={!isSnapped}
         buttonMode={true}
         cursor={isDragging ? "grabbing" : (selectedTool === "wall-drawing" ? "crosshair" : "grab")}
         onPointerOver={handlePointerOver}
@@ -402,10 +400,12 @@ const PixiCanvas = () => {
       
       // 스냅된 코너 정보 저장 (클릭 이벤트에서 사용)
       setSnappedCorner(snappedPoint.corner);
+      setIsSnapped(true);
     } else {
       // 그리드에 스냅된 경우
       setPreviewPoint({ x: snappedPoint.x, y: snappedPoint.y });
       setSnappedCorner(null);
+      setIsSnapped(false);
     }
   }, [isDrawing, startCorner, snapToGridOrCorner]);
 
@@ -533,6 +533,8 @@ const PixiCanvas = () => {
             key={corner.archiId} 
             corner={corner} 
             onCornerUpdate={updateCorner}
+            isSnapped={isSnapped}
+            snappedCorner={snappedCorner}
           />
         ))}
         

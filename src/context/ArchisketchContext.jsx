@@ -28,25 +28,19 @@ export const ArchisketchProvider = ({ children }) => {
 
   // 모서리 포인트 추가
   const addCorner = useCallback((position) => {
-    console.log('addCorner 호출됨, position:', position);
     
     const newCorner = {
       archiId: uuidv4(),
       position
     };
-    
-    console.log('생성된 코너:', newCorner);
 
     // setCorners(prev => [...prev, newCorner]);
     
     setCorners(prev => {
-      console.log('setCorners 호출됨, 이전 corners:', prev);
       const updatedCorners = [...prev, newCorner];
-      console.log('업데이트된 corners:', updatedCorners);
       return updatedCorners;
     });
     
-    console.log('addCorner 반환:', newCorner);
     return newCorner;
   }, []);
 
@@ -75,6 +69,8 @@ export const ArchisketchProvider = ({ children }) => {
     };
     
     setWalls(prev => [...prev, newWall]);
+
+    console.log('walls', walls);
     return newWall;
   }, [corners]);
 
