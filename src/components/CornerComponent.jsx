@@ -6,10 +6,7 @@ const CornerComponent = ({
   corner, 
   isSnapped, 
   snappedCorner,
-  onCornerClick,
-  onDragStart,
-  isDragging,
-  dragTarget
+  onCornerClick
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   
@@ -42,23 +39,18 @@ const CornerComponent = ({
   }, []);
 
   const handlePointerDown = useCallback((event) => {
-    // 커서 모드일 때만 드래그 가능
-    if (selectedTool !== "cursor") {
+    // 커서 모드일 때는 드래그 이벤트 무시 (가상 노드가 처리)
+    if (selectedTool === "cursor") {
       return;
     }
-    
-    // 부모 컴포넌트에 드래그 시작 이벤트 전달
-    if (onDragStart) {
-      onDragStart(corner);
-    }
-  }, [selectedTool, corner, onDragStart]);
+  }, [selectedTool]);
 
   const handlePointerUp = useCallback((event) => {
-    // 드래그 종료는 PixiCanvas에서 처리
+    // 가상 노드가 처리
   }, []);
 
   const handlePointerMove = useCallback((event) => {
-    // 드래그 이동은 PixiCanvas에서 처리
+    // 가상 노드가 처리
   }, []);
 
   return (
@@ -79,8 +71,8 @@ const CornerComponent = ({
         const strokeWidth = isHovered ? 3 : 2;
         const radius = isHovered ? 13 : 12; // 기본 크기도 약간 키움
         
-        // 드래그 중인 코너는 반투명하게 표시
-        const alpha = (dragTarget?.archiId === corner.archiId) ? 0.7 : 1;
+        // 기본 알파값
+        const alpha = 1;
         
         graphics.setFillStyle({ color: fillColor, alpha });
         graphics.circle(0, 0, radius);

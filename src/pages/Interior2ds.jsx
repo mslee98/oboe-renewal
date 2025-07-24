@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useSidebar } from "../context/SidebarContext";
 import ToolbarMenu from "../components/common/ToolbarMenu";
 import { ArchisketchProvider, useArchisketch } from "../context/ArchisketchContext";
@@ -8,6 +8,8 @@ import { Graphics } from 'pixi.js';
 import defaultCursor from '../assets/default-cursor.svg';
 import drawCursor from '../assets/draw-cursor.svg';
 import CornerComponent from '../components/CornerComponent';
+import VirtualCornerOverlay from '../components/common/VirtualCornerOverlay';
+
 
 // Graphics를 pixiGraphics로 등록
 extend({ Graphics });
@@ -182,10 +184,7 @@ const PixiCanvas = () => {
   const [snappedCorner, setSnappedCorner] = useState(null);
   const [isSnapped, setIsSnapped] = useState(false);
   
-  // 가상 코너 드래그 관련 상태
-  const [isDragging, setIsDragging] = useState(false);
-  const [virtualCorner, setVirtualCorner] = useState(null);
-  const [dragTarget, setDragTarget] = useState(null);
+
 
 
   const handleStageClick = useCallback((event) => {
@@ -300,66 +299,7 @@ const PixiCanvas = () => {
     }
   }, [isDrawing, startCorner, snapToGridOrCorner]);
 
-  // 가상 코너 드래그 시작 핸들러
-  const handleDragStart = useCallback((corner) => {
-    console.log("가상 코너 드래그 시작:", corner.archiId, corner.position);
-    
-    // 가상 코너 생성
-    const virtualCornerData = {
-      archiId: corner.archiId,
-      position: { x: corner.position.x, y: corner.position.y, z: corner.position.z },
-      isVirtual: true
-    };
-    
-    console.log("생성된 가상 코너:", virtualCornerData);
-    
-    setVirtualCorner(virtualCornerData);
-    setDragTarget(corner);
-    setIsDragging(true);
-  }, []);
 
-  // 가상 코너 드래그 이동 핸들러
-  const handleDragMove = useCallback((event) => {
-    if (isDragging && virtualCorner && selectedTool === "cursor") {
-      const newPosition = event.data.getLocalPosition(event.currentTarget.parent);
-      
-      console.log("드래그 이벤트 좌표:", {
-        global: event.data.global,
-        local: event.data.getLocalPosition(event.currentTarget),
-        parentLocal: event.data.getLocalPosition(event.currentTarget.parent),
-        newPosition
-      });
-      
-      // 가상 코너 위치 업데이트
-      setVirtualCorner({
-        ...virtualCorner,
-        position: { x: newPosition.x, y: virtualCorner.position.y, z: newPosition.y }
-      });
-      
-      console.log("가상 코너 드래그 중:", virtualCorner.archiId, newPosition);
-    }
-  }, [isDragging, virtualCorner, selectedTool]);
-
-  // 가상 코너 드래그 종료 핸들러
-  const handleDragEnd = useCallback(() => {
-    if (isDragging && virtualCorner && dragTarget) {
-      console.log("가상 코너 드래그 종료:", dragTarget.archiId, virtualCorner.position);
-      
-      // 실제 코너 위치를 가상 코너 위치로 업데이트
-      updateCorner(dragTarget.archiId, {
-        position: {
-          x: virtualCorner.position.x,
-          y: dragTarget.position.y,
-          z: virtualCorner.position.z
-        }
-      });
-      
-      // 상태 초기화
-      setIsDragging(false);
-      setVirtualCorner(null);
-      setDragTarget(null);
-    }
-  }, [isDragging, virtualCorner, dragTarget, updateCorner]);
 
   // ESC 키로 연속 그리기 중단
   useEffect(() => {
@@ -430,14 +370,10 @@ const PixiCanvas = () => {
         
         {/* 벽들 렌더링 */}
         {walls.map(wall => {
-          console.log("벽 렌더링:", wall);
           const startCorner = corners.find(c => c.archiId === wall.corners[0]);
           const endCorner = corners.find(c => c.archiId === wall.corners[1]);
           
-          console.log("찾은 코너들:", { startCorner, endCorner });
-          
           if (!startCorner || !endCorner) {
-            console.log("코너를 찾을 수 없음, 벽 렌더링 스킵");
             return null;
           }
           
@@ -445,11 +381,6 @@ const PixiCanvas = () => {
             <pixiGraphics
               key={wall.archiId}
               draw={(graphics) => {
-                console.log("벽 그리기:", {
-                  start: { x: startCorner.position.x, z: startCorner.position.z },
-                  end: { x: endCorner.position.x, z: endCorner.position.z }
-                });
-                
                 graphics.clear();
                 graphics.setStrokeStyle({ 
                   color: 0x1f2937, // 진한 회색
@@ -464,7 +395,7 @@ const PixiCanvas = () => {
           );
         })}
         
-        {/* 코너들 렌더링 - 벽 위에 표시 */}
+                {/* 코너들 렌더링 - 벽 위에 표시 */}
         {corners.map(corner => (
           <CornerComponent 
             key={corner.archiId} 
@@ -494,63 +425,24 @@ const PixiCanvas = () => {
                 }
               }
             }}
-            onDragStart={handleDragStart}
-            isDragging={isDragging}
-            dragTarget={dragTarget}
           />
         ))}
         
-        {/* 가상 코너 렌더링 */}
-        {isDragging && virtualCorner && (() => {
-          console.log("가상 코너 렌더링:", virtualCorner.position);
-          return (
-            <pixiGraphics
-              x={virtualCorner.position.x}
-              y={virtualCorner.position.z}
-              draw={(graphics) => {
-                graphics.clear();
-                
-                // 호버 영역을 위한 큰 투명 원 (호버 감지용)
-                graphics.setFillStyle({ color: 0xffffff, alpha: 0 });
-                graphics.circle(0, 0, 30);
-                graphics.fill();
-                
-                // 가상 코너는 반투명하게 표시
-                const fillColor = 0xf59e0b;
-                const strokeColor = 0x92400e;
-                const strokeWidth = 3;
-                const radius = 13;
-                const alpha = 0.7;
-                
-                graphics.setFillStyle({ color: fillColor, alpha });
-                graphics.circle(0, 0, radius);
-                graphics.fill();
-                
-                // 테두리
-                graphics.setStrokeStyle({ color: strokeColor, width: strokeWidth, alpha });
-                graphics.circle(0, 0, radius);
-                graphics.stroke();
-              }}
-              interactive={true}
-              buttonMode={true}
-              cursor="grabbing"
-              onPointerMove={handleDragMove}
-              onPointerUp={handleDragEnd}
-              onPointerUpOutside={handleDragEnd}
-            />
-          );
-        })()}
+        {/* 가상 노드 오버레이 - 커서 모드일 때만 표시 */}
+        {corners.map(corner => (
+          <VirtualCornerOverlay
+            key={`virtual-${corner.archiId}`}
+            corner={corner}
+            isSnapped={isSnapped && snappedCorner?.archiId === corner.archiId}
+          />
+        ))}
+        
+
         
         {/* 미리보기 라인 */}
         {isDrawing && startCorner && previewPoint && (
           <pixiGraphics
             draw={(graphics) => {
-              console.log("미리보기 라인 렌더링:", {
-                startCorner: startCorner.position,
-                previewPoint,
-                isDrawing
-              });
-              
               graphics.clear();
               graphics.setStrokeStyle({ 
                 color: 0x8b5cf6, // 보라색
@@ -566,44 +458,7 @@ const PixiCanvas = () => {
 
 
 
-        {/* 드래그 미리보기 벽들 */}
-        {/* {dragTarget && dragPreviewWalls.length > 0 && (
-          <>
-                          {console.log("드래그 미리보기 렌더링:", { dragTarget, dragPreviewWalls })}
-            {dragPreviewWalls.map(wall => {
-              const otherCornerId = wall.corners.find(id => id !== dragTarget.archiId);
-              const otherCorner = corners.find(c => c.archiId === otherCornerId);
-              
-              if (!otherCorner) return null;
-              
-              return (
-                <pixiGraphics
-                  key={`preview-${wall.archiId}`}
-                  draw={(graphics) => {
-                    console.log("드래그 미리보기 벽 그리기:", {
-                      wall,
-                      otherCorner: otherCorner.position,
-                      previewStart: wall.previewStart,
-                      previewEnd: wall.previewEnd
-                    });
-                    
-                    graphics.clear();
-                    graphics.setStrokeStyle({ 
-                      color: 0x3b82f6, // 파란색
-                      width: 15,
-                      alpha: 0.6
-                    });
-                    
-                    // previewStart에서 previewEnd로 선 그리기
-                    graphics.moveTo(wall.previewStart.x, wall.previewStart.z);
-                    graphics.lineTo(wall.previewEnd.x, wall.previewEnd.z);
-                    graphics.stroke();
-                  }}
-                />
-              );
-            })}
-          </>
-        )} */}
+
         
         {/* 다음 포인트 미리보기 */}
         {isDrawing && previewPoint && (
@@ -646,45 +501,43 @@ const PixiCanvas = () => {
   );
 };
 
-const PixiGrid = ({parentRef}) => {
+const PixiGrid = memo(({parentRef}) => {
+  const gridDraw = useCallback((graphics) => {
+    graphics.clear();
+    
+    // 부모 요소의 실제 크기 가져오기
+    const rect = parentRef.current?.getBoundingClientRect();
+    const width = rect?.width || 800;
+    const height = rect?.height || 600;
+    
+    const gridSize = 40;
+    
+    // 그리드 선 그리기 - PixiJS v8 문법
+    graphics.setStrokeStyle({ 
+      color: 0xcccccc, 
+      width: 1,
+      alpha: 0.5 
+    });
+    
+    // 세로선 그리기
+    for (let i = 0; i <= width / gridSize; i++) {
+      graphics.moveTo(i * gridSize, 0);
+      graphics.lineTo(i * gridSize, height);
+    }
+    
+    // 가로선 그리기
+    for (let i = 0; i <= height / gridSize; i++) {
+      graphics.moveTo(0, i * gridSize);
+      graphics.lineTo(width, i * gridSize);
+    }
+    
+    graphics.stroke();
+  }, [parentRef]);
+
   return (
-    <pixiGraphics
-          draw={(graphics) => {
-            graphics.clear();
-            
-            // 부모 요소의 실제 크기 가져오기
-            const rect = parentRef.current?.getBoundingClientRect();
-            const width = rect?.width || 800;
-            const height = rect?.height || 600;
-            
-            console.log('그리드 그리기:', width, height);
-            
-            const gridSize = 40;
-            
-            // 그리드 선 그리기 - PixiJS v8 문법
-            graphics.setStrokeStyle({ 
-              color: 0xcccccc, 
-              width: 1,
-              alpha: 0.5 
-            });
-            
-            // 세로선 그리기
-            for (let i = 0; i <= width / gridSize; i++) {
-              graphics.moveTo(i * gridSize, 0);
-              graphics.lineTo(i * gridSize, height);
-            }
-            
-            // 가로선 그리기
-            for (let i = 0; i <= height / gridSize; i++) {
-              graphics.moveTo(0, i * gridSize);
-              graphics.lineTo(width, i * gridSize);
-            }
-            
-            graphics.stroke();
-          }}
-        />
-  )
-}
+    <pixiGraphics draw={gridDraw} />
+  );
+});
 
 const Interior2ds = () => {
   return (
