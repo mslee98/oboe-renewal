@@ -369,6 +369,7 @@ const VirtualCornerOverlay = ({
         onPointerUp={handlePointerUp}
         onPointerUpOutside={handlePointerUp}
         onPointerMove={handlePointerMove}
+        zIndex={1002} // CornerComponent(1001)보다 위에
       />
       
       {/* 드래그 미리보기 벽들 */}

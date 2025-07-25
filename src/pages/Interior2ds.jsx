@@ -1,19 +1,20 @@
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import React, { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useSidebar } from "../context/SidebarContext";
 import ToolbarMenu from "../components/common/ToolbarMenu";
 import { ArchisketchProvider, useArchisketch } from "../context/ArchisketchContext";
 import { ToolProvider, useTool } from "../context/ToolContext";
 import { Application, extend } from '@pixi/react';
-import { Graphics } from 'pixi.js';
+import { Graphics, Container, Text } from 'pixi.js';
 import defaultCursor from '../assets/default-cursor.svg';
 import drawCursor from '../assets/draw-cursor.svg';
 import CornerComponent from '../components/Interior/CornerComponent';
-
+import VirtualCornerOverlay from '../components/Interior/VirtualCornerOverlay';
 import Wall2DDragOverlay from '../components/Interior/Wall2DDragOverlay';
+import ZoomController from '../components/Interior/ZoomController';
 
 
-// Graphics를 pixiGraphics로 등록
-extend({ Graphics });
+// PIXI 컴포넌트들을 React 컴포넌트로 등록
+extend({ Graphics, Container, Text });
 
 // 커스텀 커서 CSS 스타일 추가
 const cursorStyles = `
@@ -143,6 +144,41 @@ const PixiCanvas = () => {
   const { addCorner, addWallWithCorners, updateCorner, corners, walls, rooms, deleteRoom } = useArchisketch();
   const { selectedTool, selectedMode, drawingMode } = useTool();
   
+  // 줌/팬 상태 관리
+  const zoomPanState = useZoomPan();
+
+  // PIXI Application 레벨에서 팬 처리 (컴포넌트 레벨에서 정의)
+  const handleApplicationPan = useCallback((event) => {
+    const { setIsDragging, setDragStart, setInitialPosition, position } = zoomPanState;
+    
+    // 커서 모드가 아니면 무시
+    if (selectedTool !== "cursor") return;
+    
+    // 다른 인터랙티브 요소가 이미 처리했으면 무시
+    if (event.target !== event.currentTarget) {
+      console.log("🚫 다른 요소가 이벤트 처리함, 팬 무시");
+      return;
+    }
+
+    console.log("🖱️ Application 레벨 팬 시작:", { 
+      selectedTool,
+      targetType: event.target?.constructor?.name
+    });
+    
+    const originalEvent = event.data?.originalEvent;
+    if (originalEvent && originalEvent.button !== 0) return;
+
+    const clientX = event.data?.originalEvent?.clientX || event.clientX || 0;
+    const clientY = event.data?.originalEvent?.clientY || event.clientY || 0;
+    
+    setDragStart({ x: clientX, y: clientY });
+    setIsDragging(true);
+    setInitialPosition({ x: position.x, y: position.y });
+    document.body.style.cursor = 'grab';
+    
+    console.log("🖱️ PIXI Application 팬 드래그 시작");
+  }, [selectedTool, zoomPanState]);
+  
   // 코너 근처 감지 함수
   const findNearbyCorner = useCallback((point, threshold = 40) => {
     return corners.find(corner => {
@@ -177,6 +213,11 @@ const PixiCanvas = () => {
       snappedTo: 'grid'
     };
   }, [findNearbyCorner]);
+
+  // 줌/팬 클릭 핸들러 (사용되지 않음 - handleApplicationPan으로 대체됨)
+  const handleZoomPanClick = useCallback((event) => {
+    console.log("⚠️ 사용되지 않는 함수 호출됨:", event);
+  }, []);
   
   // 벽 그리기 상태 관리
   const [isDrawing, setIsDrawing] = useState(false);
@@ -189,16 +230,13 @@ const PixiCanvas = () => {
 
 
   const handleStageClick = useCallback((event) => {
-    console.log("=== 클릭 이벤트 발생 ===");
+    console.log("=== 통합 클릭 이벤트 ===");
     console.log("현재 도구:", selectedTool);
-    console.log("현재 모드:", selectedMode);
-    console.log("그리기 모드:", drawingMode);
+    console.log("이벤트 타겟:", event.target?.constructor?.name);
+    console.log("이벤트 currentTarget:", event.currentTarget?.constructor?.name);
+    console.log("stopPropagation 여부:", event.defaultPrevented);
     
-    // 커서 모드일 때는 클릭 이벤트 무시
-    if (selectedTool === "cursor") {
-      console.log("커서 모드 - 클릭 이벤트 무시");
-      return;
-    }
+    // 이 함수는 이제 드로우 모드 전용 (커서 모드는 handleApplicationPan에서 처리)
     
     // 벽 그리기 모드가 아닌 경우에도 클릭 이벤트는 발생하는지 확인
     if (selectedTool !== "wall-drawing" || selectedMode !== "draw") {
@@ -346,28 +384,39 @@ const PixiCanvas = () => {
         autoStart={true}
         eventMode="static"
       >
-        {/* 그리드 */}
-        <PixiGrid parentRef={parentRef}/>
-        
-        {/* 클릭 가능한 배경 */}
-        <pixiGraphics
-          draw={(graphics) => {
-            graphics.clear();
-            const rect = parentRef.current?.getBoundingClientRect();
-            const width = rect?.width || 800;
-            const height = rect?.height || 600;
-            
-            // 투명한 배경으로 클릭 영역 생성
-            graphics.setFillStyle({ color: 0xffffff, alpha: 0 });
-            graphics.rect(0, 0, width, height);
-            graphics.fill();
-          }}
-          interactive={true}
-          buttonMode={true}
-          cursor={selectedTool === "cursor" ? "default" : "crosshair"}
-          onPointerDown={handleStageClick}
-          onPointerMove={handleStageMouseMove}
-        />
+          {/* 줌/팬 컨테이너 */}
+          <pixiContainer
+            scale={{ x: zoomPanState.scale, y: zoomPanState.scale }}
+            position={zoomPanState.position}
+          >
+            {/* 그리드 (시각적 요소만) */}
+            <PixiGrid zoomPanState={zoomPanState}/>
+          
+          {/* 클릭 가능한 배경 (벽 그리기용) - 그리드 전체 영역 */}
+          <pixiGraphics
+            draw={(graphics) => {
+              graphics.clear();
+              
+              // 그리드와 같은 크기의 클릭 영역 생성
+              const gridExtent = 50000;
+              
+              // 투명한 배경으로 클릭 영역 생성 (그리드 전체 커버)
+              graphics.setFillStyle({ color: 0xffffff, alpha: 0 });
+              graphics.rect(-gridExtent, -gridExtent, gridExtent * 2, gridExtent * 2);
+              graphics.fill();
+              
+              console.log("🎯 클릭 영역 확장:", { 
+                size: `${gridExtent * 2}x${gridExtent * 2}`,
+                area: `(-${gridExtent}, -${gridExtent}) to (${gridExtent}, ${gridExtent})`
+              });
+            }}
+            interactive={true} // 항상 활성
+            buttonMode={selectedTool !== "cursor"}
+            cursor={selectedTool === "cursor" ? "default" : "crosshair"}
+            onPointerDown={selectedTool === "cursor" ? handleApplicationPan : handleStageClick}
+            onPointerMove={handleStageMouseMove}
+            zIndex={selectedTool !== "cursor" ? 50000 : -1000} // 드로우 모드에서만 높게
+          />
         
         {/* Room들 렌더링 (벽보다 아래에) */}
         {rooms.map(room => {
@@ -476,35 +525,41 @@ const PixiCanvas = () => {
         
         {/* 코너들 렌더링 - 벽 위에 표시 */}
         {corners.map(corner => (
-          <CornerComponent 
-            key={corner.archiId} 
-            corner={corner} 
-            isSnapped={isSnapped}
-            snappedCorner={snappedCorner}
-            onCornerClick={(clickedCorner) => {
-              if (!isDrawing) {
-                // 첫 번째 클릭 - 이 코너를 시작점으로 설정
-                setStartCorner(clickedCorner);
-                setIsDrawing(true);
-              } else {
-                // 두 번째 클릭 - 이 코너를 끝점으로 설정
-                if (startCorner.archiId !== clickedCorner.archiId) {
-                  console.log("코너에서 벽 그리기 완료:", { start: startCorner, end: clickedCorner });
-                  
-                  // 벽 생성
-                  addWallWithCorners(startCorner, clickedCorner);
-                  
-                  // 끝점을 새로운 시작점으로 설정 (연속 그리기)
+          <React.Fragment key={corner.archiId}>
+            <CornerComponent 
+              corner={corner} 
+              isSnapped={isSnapped}
+              snappedCorner={snappedCorner}
+              onCornerClick={(clickedCorner) => {
+                if (!isDrawing) {
+                  // 첫 번째 클릭 - 이 코너를 시작점으로 설정
                   setStartCorner(clickedCorner);
                   setIsDrawing(true);
-                  setPreviewPoint(null);
-                  console.log("상태 초기화 완료");
                 } else {
-                  console.log("같은 코너를 두 번 클릭함 - 무시");
+                  // 두 번째 클릭 - 이 코너를 끝점으로 설정
+                  if (startCorner.archiId !== clickedCorner.archiId) {
+                    console.log("코너에서 벽 그리기 완료:", { start: startCorner, end: clickedCorner });
+                    
+                    // 벽 생성
+                    addWallWithCorners(startCorner, clickedCorner);
+                    
+                    // 끝점을 새로운 시작점으로 설정 (연속 그리기)
+                    setStartCorner(clickedCorner);
+                    setIsDrawing(true);
+                    setPreviewPoint(null);
+                    console.log("상태 초기화 완료");
+                  } else {
+                    console.log("같은 코너를 두 번 클릭함 - 무시");
+                  }
                 }
-              }
-            }}
-          />
+              }}
+            />
+            {/* VirtualCornerOverlay는 커서 모드일 때만 활성화됨 */}
+            <VirtualCornerOverlay 
+              corner={corner} 
+              isSnapped={isSnapped}
+            />
+          </React.Fragment>
         ))}
         
         {/* 가상 노드 오버레이 제거됨 - 벽 드래그로 대체 */}
@@ -568,23 +623,250 @@ const PixiCanvas = () => {
             onPointerDown={handleStageClick}
           />
         )}
+          </pixiContainer>
+        
+        {/* 팬은 클릭 가능한 배경에서 처리 */}
+          
+          {/* 모드 상태 표시 (디버깅용) */}
+          <pixiText
+            x={10}
+            y={10}
+            text={`모드: ${selectedTool} | ${selectedMode} | interactive: ${selectedTool !== "cursor" ? "배경" : "오버레이"}`}
+            style={{
+              fontFamily: 'Arial',
+              fontSize: 12,
+              fill: selectedTool === "cursor" ? 0x10b981 : 0xe74c3c,
+              fontWeight: 'bold'
+            }}
+            zIndex={200000}
+          />
+          
+          {/* 줌/팬 상태 정보 */}
+          <pixiText
+            x={10}
+            y={30}
+            text={`줌: ${zoomPanState.scale.toFixed(2)}x | 위치: (${zoomPanState.position.x.toFixed(0)}, ${zoomPanState.position.y.toFixed(0)})`}
+            style={{
+              fontFamily: 'Arial',
+              fontSize: 12,
+              fill: 0x0066cc,
+              align: 'left'
+            }}
+            zIndex={200000}
+          />
+          
+          {/* 레이어 분리 안내 */}
+          <pixiText
+            x={10}
+            y={50}
+            text={`🏗️ 건축 요소: PIXI 그리드 레이어 | 🎮 줌/팬: 캔버스 레이어 (완전 분리)`}
+            style={{
+              fontFamily: 'Arial',
+              fontSize: 11,
+              fill: 0x666666,
+              align: 'left'
+            }}
+            zIndex={200000}
+          />
+          
+          {/* 조작 방법 안내 */}
+          <pixiText
+            x={10}
+            y={70}
+            text={`💡 휠: 줌 (항상) | 드래그: 팬 (커서모드) | 호버: 코너/벽 (항상)`}
+            style={{
+              fontFamily: 'Arial',
+              fontSize: 11,
+              fill: 0x888888,
+              align: 'left'
+            }}
+            zIndex={200000}
+          />
       </Application>
     </div>
   );
 };
 
-const PixiGrid = memo(({parentRef}) => {
+// 줌/팬 상태 관리 (전역)
+const useZoomPan = () => {
+  const { selectedTool } = useTool();
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isZoomDragging, setIsZoomDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [initialScale, setInitialScale] = useState(1);
+  const [initialPosition, setInitialPosition] = useState({ x: 0, y: 0 });
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+
+  // Shift 키 상태 추적
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Shift') {
+        setIsShiftPressed(true);
+      }
+    };
+    
+    const handleKeyUp = (e) => {
+      if (e.key === 'Shift') {
+        setIsShiftPressed(false);
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // 캔버스 레벨 휠 줌 이벤트 (항상 활성)
+  useEffect(() => {
+    const handleWheel = (event) => {
+      // canvas 영역에서만 줌 동작
+      const canvas = document.querySelector('canvas');
+      if (!canvas) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const isOverCanvas = (
+        event.clientX >= rect.left && 
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top && 
+        event.clientY <= rect.bottom
+      );
+      
+      if (!isOverCanvas) return;
+      
+      event.preventDefault();
+      
+      console.log("🔍 캔버스 휠 이벤트:", { deltaY: event.deltaY, always: "활성" });
+      
+      const isZoomIn = event.deltaY < 0;
+      const direction = isZoomIn ? 1 : -1;
+      const factor = 1 + direction * 0.1;
+      
+      setScale(prevScale => {
+        const newScale = Math.max(0.1, Math.min(5.0, prevScale * factor));
+        
+        if (newScale !== prevScale) {
+          const mouseX = event.clientX - rect.left;
+          const mouseY = event.clientY - rect.top;
+          
+          setPosition(prevPosition => {
+            // 커서 위치를 월드 좌표로 변환 (줌 전)
+            const worldX = (mouseX - prevPosition.x) / prevScale;
+            const worldY = (mouseY - prevPosition.y) / prevScale;
+            
+            // 새로운 스케일에서 커서가 같은 월드 좌표를 가리키도록 위치 조정
+            const newX = mouseX - worldX * newScale;
+            const newY = mouseY - worldY * newScale;
+            
+            console.log("🎯 커서 기준 줌 계산:", {
+              cursor: { x: mouseX, y: mouseY },
+              worldPos: { x: worldX.toFixed(1), y: worldY.toFixed(1) },
+              oldScale: prevScale.toFixed(2),
+              newScale: newScale.toFixed(2),
+              oldPosition: { x: prevPosition.x.toFixed(1), y: prevPosition.y.toFixed(1) },
+              newPosition: { x: newX.toFixed(1), y: newY.toFixed(1) }
+            });
+            
+            return { x: newX, y: newY };
+          });
+          
+          console.log("🔍 캔버스 줌 적용:", { 
+            delta: event.deltaY, 
+            direction: isZoomIn ? "확대" : "축소",
+            newScale: newScale.toFixed(2),
+            cursorPos: { x: mouseX, y: mouseY }
+          });
+        }
+        
+        return newScale;
+      });
+    };
+
+    // canvas 대신 document에 연결하여 더 안정적으로 처리
+    document.addEventListener('wheel', handleWheel, { passive: false });
+    console.log("✅ 캔버스 휠 이벤트 리스너 추가 (항상 활성)");
+    return () => {
+      document.removeEventListener('wheel', handleWheel);
+      console.log("🗑️ 캔버스 휠 이벤트 리스너 제거");
+    };
+  }, []); // 의존성 없음 - 항상 활성
+
+  // 전역 마우스 이벤트로 드래그 처리
+  useEffect(() => {
+    if (!isDragging && !isZoomDragging) return;
+
+    const handleMouseMove = (event) => {
+      if (isZoomDragging) {
+        // 줌 모드
+        const deltaY = dragStart.y - event.clientY;
+        const zoomDelta = deltaY * 0.02;
+        const newScale = Math.max(0.1, Math.min(5.0, initialScale + zoomDelta));
+        setScale(newScale);
+        console.log("🔍 드래그 줌 중:", { deltaY, newScale: newScale.toFixed(2) });
+        
+      } else if (isDragging) {
+        // 팬 모드
+        const deltaX = event.clientX - dragStart.x;
+        const deltaY = event.clientY - dragStart.y;
+        const newPosition = {
+          x: initialPosition.x + deltaX,
+          y: initialPosition.y + deltaY
+        };
+        setPosition(newPosition);
+        document.body.style.cursor = 'grabbing';
+        console.log("🖱️ 드래그 팬 중:", { deltaX, deltaY, newPosition });
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (isZoomDragging) {
+        setIsZoomDragging(false);
+        console.log("🔍 드래그 줌 완료:", { finalScale: scale.toFixed(2) });
+      }
+      if (isDragging) {
+        setIsDragging(false);
+        console.log("🖱️ 드래그 팬 완료:", { finalPosition: position });
+      }
+      document.body.style.cursor = 'default';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, isZoomDragging, dragStart, initialScale, initialPosition, scale, position]);
+
+  return {
+    selectedTool, isShiftPressed, setIsShiftPressed,
+    isDragging, setIsDragging, isZoomDragging, setIsZoomDragging,
+    dragStart, setDragStart, initialScale, setInitialScale,
+    initialPosition, setInitialPosition, scale, setScale,
+    position, setPosition
+  };
+};
+
+const PixiGrid = memo(({zoomPanState}) => {
+  const { scale, position } = zoomPanState;
+  const containerRef = useRef(null);
+
+  // 그리드는 시각적 요소만 담당
+
   const gridDraw = useCallback((graphics) => {
     graphics.clear();
     
-    // 부모 요소의 실제 크기 가져오기
-    const rect = parentRef.current?.getBoundingClientRect();
-    const width = rect?.width || 800;
-    const height = rect?.height || 600;
-    
+    // 엄청 큰 그리드 영역 (줌/팬을 고려한 여유 공간)
     const gridSize = 40;
+    const gridExtent = 50000; // 매우 큰 그리드
     
-    // 그리드 선 그리기 - PixiJS v8 문법
+    // 그리드 선 그리기
     graphics.setStrokeStyle({ 
       color: 0xcccccc, 
       width: 1,
@@ -592,22 +874,112 @@ const PixiGrid = memo(({parentRef}) => {
     });
     
     // 세로선 그리기
-    for (let i = 0; i <= width / gridSize; i++) {
-      graphics.moveTo(i * gridSize, 0);
-      graphics.lineTo(i * gridSize, height);
+    for (let i = -gridExtent; i <= gridExtent; i += gridSize) {
+      graphics.moveTo(i, -gridExtent);
+      graphics.lineTo(i, gridExtent);
     }
     
     // 가로선 그리기
-    for (let i = 0; i <= height / gridSize; i++) {
-      graphics.moveTo(0, i * gridSize);
-      graphics.lineTo(width, i * gridSize);
+    for (let i = -gridExtent; i <= gridExtent; i += gridSize) {
+      graphics.moveTo(-gridExtent, i);
+      graphics.lineTo(gridExtent, i);
     }
     
     graphics.stroke();
-  }, [parentRef]);
+  }, []);
 
   return (
-    <pixiGraphics draw={gridDraw} />
+    <pixiGraphics 
+      draw={gridDraw}
+      interactive={false}
+      zIndex={-1000}
+    />
+  );
+});
+
+// 줌/팬 이벤트 처리 오버레이 (최상위)
+const ZoomPanOverlay = memo(({zoomPanState}) => {
+  const {
+    selectedTool, isShiftPressed,
+    isDragging, setIsDragging, isZoomDragging, setIsZoomDragging,
+    setDragStart, setInitialScale, setInitialPosition, scale, position
+  } = zoomPanState;
+
+  const handlePointerDown = useCallback((event) => {
+    console.log("🎯 줌/팬 백그라운드 클릭:", { 
+      selectedTool, 
+      isShiftPressed,
+      targetType: event.target?.constructor?.name,
+      currentTargetType: event.currentTarget?.constructor?.name,
+      isSameTarget: event.target === event.currentTarget
+    });
+    
+    // 커서 모드가 아니면 이벤트를 다른 요소에 전달
+    if (selectedTool !== "cursor") {
+      console.log("❌ 커서 모드가 아님, 줌/팬 이벤트 전달:", selectedTool);
+      return; // stopPropagation 하지 않음
+    }
+
+    // 이미 다른 요소가 처리한 이벤트면 무시
+    if (event.target !== event.currentTarget) {
+      console.log("❌ 다른 요소가 이미 처리함, 줌/팬 무시");
+      return;
+    }
+
+    const originalEvent = event.data?.originalEvent;
+    if (originalEvent && originalEvent.button !== 0) return;
+
+    // 확실히 빈 공간 클릭 - 줌/팬 시작
+    console.log("✅ 빈 공간 확인됨 - 줌/팬 시작");
+    event.stopPropagation();
+    
+    const clientX = event.data?.originalEvent?.clientX || event.clientX || 0;
+    const clientY = event.data?.originalEvent?.clientY || event.clientY || 0;
+    
+    setDragStart({ x: clientX, y: clientY });
+    
+    if (isShiftPressed) {
+      setIsZoomDragging(true);
+      setInitialScale(scale);
+      document.body.style.cursor = 'ns-resize';
+      console.log("🔍 빈 공간에서 줌 드래그 시작");
+    } else {
+      setIsDragging(true);
+      setInitialPosition({ x: position.x, y: position.y });
+      document.body.style.cursor = 'grab';
+      console.log("🖱️ 빈 공간에서 팬 드래그 시작");
+    }
+  }, [selectedTool, isShiftPressed, scale, position, setDragStart, setIsZoomDragging, setInitialScale, setIsDragging, setInitialPosition]);
+
+  return (
+    <pixiGraphics
+      draw={(graphics) => {
+        graphics.clear();
+        
+        // 커서 모드일 때만 낮은 우선순위 백그라운드 생성
+        if (selectedTool === "cursor") {
+          // 화면 전체 크기로 백그라운드 생성 (낮은 zIndex로 백그라운드 역할)
+          const rect = document.querySelector('canvas')?.getBoundingClientRect();
+          const width = rect?.width || 1000;
+          const height = rect?.height || 800;
+          
+          // 매우 투명한 백그라운드 (이벤트 감지용)
+          graphics.setFillStyle({ color: 0xffffff, alpha: 0.01 });
+          graphics.rect(0, 0, width, height);
+          graphics.fill();
+          
+          console.log("🎯 백그라운드 줌/팬 영역:", { width, height, zIndex: 500 });
+        }
+      }}
+      interactive={selectedTool === "cursor"}
+      buttonMode={false}
+      onPointerDown={handlePointerDown}
+      zIndex={selectedTool === "cursor" ? 500 : -100000} // 건축 요소들(1000+)보다 낮게
+      hitArea={selectedTool === "cursor" ? (() => {
+        const rect = document.querySelector('canvas')?.getBoundingClientRect();
+        return { x: 0, y: 0, width: rect?.width || 1000, height: rect?.height || 800 };
+      })() : null}
+    />
   );
 });
 

@@ -569,6 +569,7 @@ const Wall2DDragOverlay = ({ wall, corners }) => {
         onPointerUp={handlePointerUp}
         onPointerUpOutside={handlePointerUp}
         onPointerMove={handlePointerMove}
+        zIndex={1000} // 인터랙티브 요소로 높은 우선순위
       />
 
              {/* 드래그 미리보기 벽들 */}
