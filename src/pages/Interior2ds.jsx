@@ -7,8 +7,9 @@ import { Application, extend } from '@pixi/react';
 import { Graphics } from 'pixi.js';
 import defaultCursor from '../assets/default-cursor.svg';
 import drawCursor from '../assets/draw-cursor.svg';
-import CornerComponent from '../components/CornerComponent';
-import VirtualCornerOverlay from '../components/common/VirtualCornerOverlay';
+import CornerComponent from '../components/Interior/CornerComponent';
+
+import Wall2DDragOverlay from '../components/Interior/Wall2DDragOverlay';
 
 
 // Graphics를 pixiGraphics로 등록
@@ -463,8 +464,17 @@ const PixiCanvas = () => {
             />
           );
         })}
+
+        {/* 벽 드래그 오버레이들 렌더링 */}
+        {walls.map(wall => (
+          <Wall2DDragOverlay
+            key={`drag-${wall.archiId}`}
+            wall={wall}
+            corners={corners}
+          />
+        ))}
         
-                {/* 코너들 렌더링 - 벽 위에 표시 */}
+        {/* 코너들 렌더링 - 벽 위에 표시 */}
         {corners.map(corner => (
           <CornerComponent 
             key={corner.archiId} 
@@ -497,14 +507,7 @@ const PixiCanvas = () => {
           />
         ))}
         
-        {/* 가상 노드 오버레이 - 커서 모드일 때만 표시 */}
-        {corners.map(corner => (
-          <VirtualCornerOverlay
-            key={`virtual-${corner.archiId}`}
-            corner={corner}
-            isSnapped={isSnapped && snappedCorner?.archiId === corner.archiId}
-          />
-        ))}
+        {/* 가상 노드 오버레이 제거됨 - 벽 드래그로 대체 */}
         
 
         

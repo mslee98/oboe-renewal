@@ -44,6 +44,19 @@ export const ArchisketchProvider = ({ children }) => {
     return newCorner;
   }, []);
 
+  // 코너 위치 업데이트 (벽 드래그용)
+  const updateCornerPosition = useCallback((cornerId, newPosition) => {
+    setCorners(prev => {
+      const updatedCorners = prev.map(corner => 
+        corner.archiId === cornerId 
+          ? { ...corner, position: newPosition }
+          : corner
+      );
+      console.log(`📍 코너 위치 업데이트: ${cornerId} → (${newPosition.x}, ${newPosition.z})`);
+      return updatedCorners;
+    });
+  }, []);
+
 
 
   const addWall = useCallback((startCornerId, endCornerId) => {
@@ -735,6 +748,7 @@ export const ArchisketchProvider = ({ children }) => {
     // 액션
     addCorner,
     updateCorner,
+    updateCornerPosition,
     deleteCorner,
     mergeCorners,
     addWall,

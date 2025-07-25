@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { useArchisketch } from '../context/ArchisketchContext';
-import { useTool } from '../context/ToolContext';
+import { useArchisketch } from '../../context/ArchisketchContext';
+import { useTool } from '../../context/ToolContext';
 
 const CornerComponent = ({ 
   corner, 
