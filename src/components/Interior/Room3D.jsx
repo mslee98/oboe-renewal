@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { logicalTo3D, createVector3FromLogical } from '../../utils/coordinateUtils';
 
@@ -161,6 +161,9 @@ const Room3D = ({ room, corners }) => {
     return { geometry, debugInfo };
   }, [room, corners]);
 
+  const [hovered, setHovered] = useState(false);
+  const [selected, setSelected] = useState(false);
+
   if (!geometry) {
     return null;
   }
@@ -171,15 +174,20 @@ const Room3D = ({ room, corners }) => {
   const roomColor = roomColors[roomIndex];
 
   return (
-    <mesh 
-      geometry={geometry} 
-      position={[0, 0, 0]} 
+    <mesh
+      name={`Room:${room.archiId}`}
+      userData={{ type: 'room', id: room.archiId }}
+      geometry={geometry}
+      position={[0, 0, 0]}
       receiveShadow
       castShadow
+      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); }}
+      onPointerOut={(e) => { e.stopPropagation(); setHovered(false); }}
+      onPointerDown={(e) => { e.stopPropagation(); setSelected((s) => !s); }}
     >
-      <meshLambertMaterial 
-        color={roomColor} 
-        transparent 
+      <meshLambertMaterial
+        color={selected ? '#1d4ed8' : (hovered ? '#60a5fa' : roomColor)}
+        transparent
         opacity={0.8}
         side={THREE.DoubleSide}
       />

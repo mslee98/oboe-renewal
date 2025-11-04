@@ -159,6 +159,11 @@ export const SceneProvider = ({ children }) => {
         setSceneData(newSceneData);
         setOriginalScene(newOriginalScene);
         
+        // originalScene이 null이거나 유효하지 않으면 히스토리 초기화를 건너뛰기
+        if (!newOriginalScene) {
+            return;
+        }
+        
         // 초기 상태를 히스토리에 추가 (실제 3D 객체의 상태 저장)
         const captureInitialState = (node) => {
             return {
@@ -185,6 +190,8 @@ export const SceneProvider = ({ children }) => {
             const states = [];
             
             const traverse = (node) => {
+                if (!node) return; // null 체크 추가
+                
                 if (node.isMesh || node.isGroup) {
                     states.push(captureInitialState(node));
                 }

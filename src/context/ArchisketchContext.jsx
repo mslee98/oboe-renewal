@@ -761,6 +761,24 @@ export const ArchisketchProvider = ({ children }) => {
     setRooms(prev => prev.filter(room => room.archiId !== archiId));
   }, []);
 
+  // 스냅샷 로드 (2D→3D 전환 시 상태 주입)
+  const loadSnapshot = useCallback((snapshot) => {
+    if (!snapshot) return;
+    const snapCorners = Array.isArray(snapshot.corners) ? snapshot.corners : [];
+    const snapWalls = Array.isArray(snapshot.walls) ? snapshot.walls : [];
+    const snapRooms = Array.isArray(snapshot.rooms) ? snapshot.rooms : [];
+    setCorners(snapCorners.map(c => ({
+      archiId: c.archiId || c.id,
+      position: {
+        x: c.position?.x ?? 0,
+        y: c.position?.y ?? 0,
+        z: c.position?.z ?? 0
+      }
+    })));
+    setWalls(snapWalls);
+    setRooms(snapRooms);
+  }, []);
+
   // 모서리 선택
   const selectCorner = useCallback((archiId) => {
     setSelectedCornerId(archiId);
@@ -827,7 +845,8 @@ export const ArchisketchProvider = ({ children }) => {
     
     // 유틸리티
     getCornerById,
-    getRoomCorners
+    getRoomCorners,
+    loadSnapshot
   };
 
   return (

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { logicalTo3D, createVector3FromLogical } from '../../utils/coordinateUtils';
 import { useThree, useFrame } from '@react-three/fiber';
@@ -452,6 +452,9 @@ const Walls3D = ({ walls, corners }) => {
     });
   });
 
+  const [hoveredWallId, setHoveredWallId] = useState(null);
+  const [selectedWallId, setSelectedWallId] = useState(null);
+
   if (wallMeshes.length === 0) return null;
 
   return (
@@ -459,6 +462,8 @@ const Walls3D = ({ walls, corners }) => {
       {wallMeshes.map(({ key, geometry, position, rotation }) => (
         <mesh
           key={key}
+          name={`Wall:${key}`}
+          userData={{ type: 'wall', id: key }}
           geometry={geometry}
           position={position}
           rotation={rotation}
@@ -467,8 +472,15 @@ const Walls3D = ({ walls, corners }) => {
           }}
           castShadow
           receiveShadow
+          onPointerOver={(e) => { e.stopPropagation(); setHoveredWallId(key); }}
+          onPointerOut={(e) => { e.stopPropagation(); if (hoveredWallId === key) setHoveredWallId(null); }}
+          onPointerDown={(e) => { e.stopPropagation(); setSelectedWallId(key); }}
         >
-          <meshStandardMaterial color="#9ca3af" metalness={0.1} roughness={0.9} />
+          <meshStandardMaterial
+            color={selectedWallId === key ? '#2563eb' : (hoveredWallId === key ? '#4b5563' : '#9ca3af')}
+            metalness={0.1}
+            roughness={0.9}
+          />
         </mesh>
       ))}
     </>
