@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useArchisketch } from '../../context/ArchisketchContext';
 import { useTool } from '../../context/ToolContext';
+import { logicalToPixel, pixelToLogical, METERS_PER_PIXEL } from '../../utils/coordinateUtils';
+import { Rectangle } from 'pixi.js';
 
 const VirtualCornerOverlay = ({ 
   corner, 
@@ -9,10 +11,12 @@ const VirtualCornerOverlay = ({
   const [isHovered, setIsHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragPreviewWalls, setDragPreviewWalls] = useState([]);
+  // 논리적 단위 → 픽셀 변환
+  const initialPixelPos = logicalToPixel({ x: corner.position.x, z: corner.position.z });
   const [virtualPosition, setVirtualPosition] = useState({ 
-    x: corner.position.x, 
-    z: corner.position.z 
-  }); // 가상 코너 위치
+    x: initialPixelPos.x, 
+    z: initialPixelPos.z 
+  }); // 가상 코너 위치 (픽셀)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 }); // 드래그 시작점 오프셋
   const [snapTarget, setSnapTarget] = useState(null); // 스냅 대상 코너
   const [isSnapMode, setIsSnapMode] = useState(false); // 스냅 모드 활성화
@@ -23,10 +27,14 @@ const VirtualCornerOverlay = ({
   // 스냅 거리 설정 (Interior2ds.jsx와 동일하게)
   const SNAP_DISTANCE = 60;
 
-  // 근처 코너 찾기 함수 (Interior2ds.jsx와 동일한 로직)
-  const findNearbyCorner = useCallback((point, threshold = SNAP_DISTANCE) => {
+  // 근처 코너 찾기 함수 (픽셀 좌표 → 논리적 단위 변환)
+  const findNearbyCorner = useCallback((pixelPoint, threshold = SNAP_DISTANCE) => {
+    // 픽셀 좌표를 논리적 단위로 변환
+    const logicalPoint = pixelToLogical({ x: pixelPoint.x, z: pixelPoint.y || pixelPoint.z });
+    
     console.log("스냅 확인:", {
-      currentPosition: point,
+      pixelPosition: pixelPoint,
+      logicalPosition: logicalPoint,
       totalCorners: corners.length,
       snapDistance: threshold
     });
@@ -34,14 +42,18 @@ const VirtualCornerOverlay = ({
     const nearbyCorner = corners.find(otherCorner => {
       if (otherCorner.archiId === corner.archiId) return false; // 현재 드래그 중인 코너 제외
       
+      // 논리적 단위로 거리 계산
       const distance = Math.sqrt(
-        Math.pow(point.x - otherCorner.position.x, 2) + 
-        Math.pow(point.y - otherCorner.position.z, 2) // y 좌표 사용
+        Math.pow(logicalPoint.x - otherCorner.position.x, 2) + 
+        Math.pow(logicalPoint.z - otherCorner.position.z, 2)
       );
       
-      console.log(`코너 ${otherCorner.archiId} 거리:`, distance);
+      // threshold도 논리적 단위로 변환
+      const logicalThreshold = threshold * METERS_PER_PIXEL;
       
-      return distance <= threshold;
+      console.log(`코너 ${otherCorner.archiId} 거리:`, distance, `(threshold: ${logicalThreshold})`);
+      
+      return distance <= logicalThreshold;
     });
     
     if (nearbyCorner) {
@@ -112,14 +124,15 @@ const VirtualCornerOverlay = ({
     // 전역 변수나 ref를 사용하여 병합 확인 예약
     window.__pendingMergeCheck = pendingMergeCheck;
     
-    console.log("⏰ 병합 확인 예약:", pendingMergeCheck);
+    console.log("병합 확인 예약:", pendingMergeCheck);
     
   }, [updateCorner, findCornersAtPosition, mergeCorners]);
 
   // 원본 코너 위치가 변경되면 가상 위치도 동기화 (드래그 중이 아닐 때만)
   useEffect(() => {
     if (!isDragging) {
-      setVirtualPosition({ x: corner.position.x, z: corner.position.z });
+      const pixelPos = logicalToPixel({ x: corner.position.x, z: corner.position.z });
+      setVirtualPosition({ x: pixelPos.x, z: pixelPos.z });
     }
   }, [corner.position.x, corner.position.z, isDragging]);
 
@@ -131,7 +144,7 @@ const VirtualCornerOverlay = ({
     // 이 컴포넌트의 코너가 관련된 경우에만 처리
     if (pendingCheck.draggedCornerId !== corner.archiId) return;
     
-    console.log("🔍 corners 상태 변경 감지 - 병합 확인 시작");
+    console.log("corners 상태 변경 감지 - 병합 확인 시작");
     console.log("예약된 병합 확인:", pendingCheck);
     
     // 드래그된 코너가 실제로 스냅 위치로 이동했는지 확인
@@ -153,7 +166,7 @@ const VirtualCornerOverlay = ({
       });
       
       if (distance <= 5) { // 위치가 올바르게 업데이트됨
-        console.log("✅ 코너 위치 업데이트 완료 - 병합 확인 실행");
+        console.log("코너 위치 업데이트 완료 - 병합 확인 실행");
         
         // 병합 확인 실행
         const cornersAtSnapPosition = findCornersAtPosition(pendingCheck.snapPosition, 5);
@@ -178,7 +191,7 @@ const VirtualCornerOverlay = ({
             console.log("🚨🚨🚨 mergeCorners 함수 호출 완료! 🚨🚨🚨");
           }
         } else {
-          console.log("✅ 겹치는 코너 없음 - 병합 불필요");
+          console.log("겹치는 코너 없음 - 병합 불필요");
         }
         
         // 병합 확인 완료 - 정리
@@ -189,8 +202,8 @@ const VirtualCornerOverlay = ({
     }
   }, [corners, corner.archiId, findCornersAtPosition, mergeCorners]);
 
-  // 연결된 벽들의 미리보기 계산
-  const getConnectedWallsPreview = useCallback((cornerId, newPosition) => {
+  // 연결된 벽들의 미리보기 계산 (픽셀 좌표로 통일)
+  const getConnectedWallsPreview = useCallback((cornerId, pixelPosition) => {
     const connectedWalls = walls.filter(wall => 
       wall.corners.includes(cornerId)
     );
@@ -201,10 +214,26 @@ const VirtualCornerOverlay = ({
       
       if (!otherCorner) return null;
       
+      // 다른 코너의 논리적 단위를 픽셀로 변환
+      const otherCornerPixel = logicalToPixel({ 
+        x: otherCorner.position.x, 
+        z: otherCorner.position.z 
+      });
+      
+      // 현재 드래그 중인 코너 위치는 이미 픽셀 좌표 (x, z 형태)
+      const currentCornerPixel = { 
+        x: pixelPosition.x, 
+        z: pixelPosition.z  // z로 통일
+      };
+      
       return {
         ...wall,
-        previewStart: wall.corners[0] === cornerId ? { x: newPosition.x, z: newPosition.y } : otherCorner.position,
-        previewEnd: wall.corners[1] === cornerId ? { x: newPosition.x, z: newPosition.y } : otherCorner.position
+        previewStart: wall.corners[0] === cornerId 
+          ? currentCornerPixel 
+          : otherCornerPixel,
+        previewEnd: wall.corners[1] === cornerId 
+          ? currentCornerPixel 
+          : otherCornerPixel
       };
     }).filter(Boolean);
   }, [walls, corners]);
@@ -239,8 +268,9 @@ const VirtualCornerOverlay = ({
       
       if (nearbyCorner) {
         console.log("🎯 스냅 활성화:", nearbyCorner.archiId);
-        // 스냅 모드: 스냅 대상 위치로 설정
-        currentPosition = { x: nearbyCorner.position.x, z: nearbyCorner.position.z };
+        // 스냅 모드: 논리적 단위 코너를 픽셀로 변환
+        const pixelCorner = logicalToPixel({ x: nearbyCorner.position.x, z: nearbyCorner.position.z });
+        currentPosition = { x: pixelCorner.x, z: pixelCorner.z };
         currentSnapTarget = nearbyCorner;
         currentIsSnapMode = true;
         setSnapTarget(nearbyCorner);
@@ -248,8 +278,8 @@ const VirtualCornerOverlay = ({
         console.log("   → 스냅 모드 ON, 타겟:", nearbyCorner.archiId);
       } else {
         console.log("➡️ 스냅 없음 - 일반 모드");
-        // 일반 모드: 마우스 위치 그대로
-        currentPosition = { x: newPosition.x, z: newPosition.y };
+        // 일반 모드: 마우스 위치 그대로 (이미 픽셀 좌표)
+        currentPosition = { x: newPosition.x, z: newPosition.y || newPosition.z };
         currentSnapTarget = null;
         currentIsSnapMode = false;
         setSnapTarget(null);
@@ -259,8 +289,8 @@ const VirtualCornerOverlay = ({
       
       setVirtualPosition(currentPosition);
       
-      // 미리보기 계산
-      const previewWalls = getConnectedWallsPreview(corner.archiId, newPosition);
+      // 미리보기 계산 (픽셀 좌표로 전달)
+      const previewWalls = getConnectedWallsPreview(corner.archiId, currentPosition);
       setDragPreviewWalls(previewWalls);
     };
     
@@ -279,16 +309,17 @@ const VirtualCornerOverlay = ({
       
       // 로컬 변수 사용 (React 상태 업데이트 지연 문제 해결)
       if (currentIsSnapMode && currentSnapTarget) {
-        console.log("✅ 스냅 이벤트 호출! (로컬 변수 기준)");
+        console.log("스냅 이벤트 호출! (로컬 변수 기준)");
         handleSnapEvent(currentSnapTarget, corner);
       } else {
-        console.log("➡️ 일반 모드 위치 업데이트");
-        // 일반 모드: 실제 코너 위치 업데이트 (자동으로 그룹 이동 처리됨)
+        console.log("일반 모드 위치 업데이트");
+        // 일반 모드: 픽셀 좌표를 논리적 단위로 변환하여 저장
+        const logicalPosition = pixelToLogical({ x: currentPosition.x, z: currentPosition.z });
         updateCorner(corner.archiId, {
           position: {
-            x: currentPosition.x,
-            y: corner.position.y,
-            z: currentPosition.z
+            x: logicalPosition.x,
+            y: corner.position.y || 0,
+            z: logicalPosition.z
           }
         });
       }
@@ -362,14 +393,19 @@ const VirtualCornerOverlay = ({
         }}
         interactive={!isSnapped}
         buttonMode={true}
+        eventMode="static"
         cursor={isDragging ? "grabbing" : "grab"}
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
-        onPointerDown={handlePointerDown}
+        onPointerDown={(event) => {
+          event.stopPropagation(); // 이벤트 전파 중단하여 컨테이너가 처리하지 않도록
+          handlePointerDown(event);
+        }}
         onPointerUp={handlePointerUp}
         onPointerUpOutside={handlePointerUp}
         onPointerMove={handlePointerMove}
-        zIndex={1002} // CornerComponent(1001)보다 위에
+        zIndex={10001} // CornerComponent(10000)보다 위에
+        hitArea={new Rectangle(-30, -30, 60, 60)}
       />
       
       {/* 드래그 미리보기 벽들 */}
@@ -384,6 +420,7 @@ const VirtualCornerOverlay = ({
               alpha: 0.6
             });
             
+            // 픽셀 좌표로 그리기
             graphics.moveTo(wall.previewStart.x, wall.previewStart.z);
             graphics.lineTo(wall.previewEnd.x, wall.previewEnd.z);
             graphics.stroke();
@@ -392,10 +429,15 @@ const VirtualCornerOverlay = ({
       ))}
       
       {/* 스냅 대상 표시 */}
-      {isSnapMode && snapTarget && (
-        <pixiGraphics
-          x={snapTarget.position.x}
-          y={snapTarget.position.z}
+      {isSnapMode && snapTarget && (() => {
+        const snapTargetPixel = logicalToPixel({ 
+          x: snapTarget.position.x, 
+          z: snapTarget.position.z 
+        });
+        return (
+          <pixiGraphics
+            x={snapTargetPixel.x}
+            y={snapTargetPixel.z}
           draw={(graphics) => {
             graphics.clear();
             
@@ -420,7 +462,8 @@ const VirtualCornerOverlay = ({
             graphics.stroke();
           }}
         />
-      )}
+        );
+      })()}
     </>
   );
 };

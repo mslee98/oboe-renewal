@@ -5,6 +5,7 @@ import {
   calculateArea, 
   calculateInnerPoints 
 } from '../types/archisketchTypes';
+import { pixelToLogical, logicalToPixel } from '../utils/coordinateUtils';
 
 import { v4 as uuidv4 } from 'uuid';
 
@@ -26,15 +27,54 @@ export const ArchisketchProvider = ({ children }) => {
   const [selectedWallId, setSelectedWallId] = useState(null);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
 
-  // 모서리 포인트 추가
-  const addCorner = useCallback((position) => {
+  // 모서리 포인트 추가 (픽셀 좌표를 논리적 단위로 변환하여 저장)
+  const addCorner = useCallback((pixelPosition) => {
+    console.log("🔵 addCorner 호출됨 - 입력 좌표:", {
+      입력값: pixelPosition,
+      x: pixelPosition.x,
+      y: pixelPosition.y,
+      z: pixelPosition.z,
+      absX: Math.abs(pixelPosition.x),
+      absZ: Math.abs(pixelPosition.z)
+    });
+    
+    // 픽셀 → 논리적 단위(미터) 변환
+    const logicalPosition = {
+      x: pixelPosition.x || 0,
+      y: pixelPosition.y || 0,
+      z: pixelPosition.z || 0
+    };
+    
+    // 픽셀 좌표인 경우 변환 (절댓값이 100 이상이면 픽셀, 작은 값이면 이미 논리적)
+    // 음수도 고려하여 절댓값으로 체크
+    const absX = Math.abs(pixelPosition.x);
+    const absZ = Math.abs(pixelPosition.z);
+    const isPixel = absX > 100 || absZ > 100;
+    
+    if (isPixel) {
+      // 픽셀 좌표로 판단 → 논리적 단위로 변환
+      const converted = pixelToLogical({ x: pixelPosition.x, z: pixelPosition.z });
+      logicalPosition.x = converted.x;
+      logicalPosition.z = converted.z;
+      console.log("  → 픽셀 좌표로 판단, 논리적 단위로 변환:", {
+        픽셀: { x: pixelPosition.x, z: pixelPosition.z },
+        논리적: converted,
+        판단기준: `|x|=${absX}, |z|=${absZ}`
+      });
+    } else {
+      console.log("  → 논리적 좌표로 판단, 그대로 사용:", logicalPosition);
+    }
     
     const newCorner = {
       archiId: uuidv4(),
-      position
+      position: logicalPosition  // 논리적 단위로 저장
     };
-
-    // setCorners(prev => [...prev, newCorner]);
+    
+    console.log("✅ 코너 생성 완료:", {
+      id: newCorner.archiId,
+      최종저장위치: newCorner.position,
+      논리적좌표: { x: newCorner.position.x, z: newCorner.position.z }
+    });
     
     setCorners(prev => {
       const updatedCorners = [...prev, newCorner];
@@ -90,14 +130,8 @@ export const ArchisketchProvider = ({ children }) => {
   }, [corners]);
 
   const addWallWithCorners = useCallback((startCorner, endCorner) => {
-    console.log('=== 벽 추가 시작 ===');
-    console.log('addWallWithCorners 호출:', { 
-      start: `${startCorner.archiId}(${startCorner.position.x},${startCorner.position.z})`,
-      end: `${endCorner.archiId}(${endCorner.position.x},${endCorner.position.z})`
-    });
-    
     if (!startCorner || !endCorner) {
-      console.error('시작점 또는 끝점 코너가 없습니다.');
+      console.error('벽 추가 실패: 시작점 또는 끝점 코너가 없습니다.');
       return null;
     }
     
@@ -108,7 +142,6 @@ export const ArchisketchProvider = ({ children }) => {
     );
     
     if (existingWall) {
-      console.log('⚠️ 중복 벽 감지 - 추가하지 않음:', existingWall.archiId);
       return existingWall;
     }
     
@@ -129,14 +162,7 @@ export const ArchisketchProvider = ({ children }) => {
       visible: true
     };
     
-    console.log('새 벽 추가:', newWall);
-    console.log('추가 전 벽 목록:', walls.map(w => `${w.archiId}: ${w.corners.join('-')}`));
-    
-    setWalls(prev => {
-      const updated = [...prev, newWall];
-      console.log('추가 후 벽 목록:', updated.map(w => `${w.archiId}: ${w.corners.join('-')}`));
-      return updated;
-    });
+    setWalls(prev => [...prev, newWall]);
     
     return newWall;
   }, [walls]);
@@ -405,11 +431,22 @@ export const ArchisketchProvider = ({ children }) => {
     
   }, [walls, rooms]);
 
-  // 방 추가
+  // 방 추가 (중복 체크 포함)
   const addRoom = useCallback((cornerIds) => {
     if (cornerIds.length < 3) {
       console.error('방을 만들려면 최소 3개의 모서리가 필요합니다.');
       return null;
+    }
+
+    // 중복 체크: 이미 존재하는 룸인지 확인
+    const roomKey = cornerIds.slice().sort().join(',');
+    const existingRoom = rooms.find(r => 
+      r.corners.slice().sort().join(',') === roomKey
+    );
+
+    if (existingRoom) {
+      console.log('⚠️ 중복 룸 감지 - 추가하지 않음:', existingRoom.archiId);
+      return existingRoom;
     }
 
     // 모서리 포인트들 가져오기
@@ -438,31 +475,19 @@ export const ArchisketchProvider = ({ children }) => {
     
     console.log('새 방 추가:', newRoom);
     return newRoom;
-  }, [corners]);
+  }, [corners, rooms]);
 
   // 실제 Room 영역 감지 (새로운 접근 방식)
   const detectAndCreateRooms = useCallback(() => {
-    console.log('=== Room 영역 감지 시작 (새로운 방식) ===');
-    console.log('입력 데이터:');
-    console.log('  - 코너 수:', corners.length);
-    console.log('  - 벽 수:', walls.length);
-    console.log('  - 기존 Room 수:', rooms.length);
-    
-    // 코너와 벽 상세 정보
-    console.log('코너 목록:', corners.map(c => `${c.archiId}(${c.position.x},${c.position.z})`));
-    console.log('벽 목록:', walls.map(w => `${w.archiId}: ${w.corners[0]}-${w.corners[1]}`));
-    
-    // 이미 생성된 방들의 코너 조합들 저장 (중복 방지)
-    const existingRoomCorners = new Set(
-      rooms.map(room => room.corners.slice().sort().join(','))
-    );
-    
     const foundRooms = [];
+    
+    // 기존 rooms 상태를 가져와서 중복 체크용 Set 생성
+    // 주의: setRooms 내부에서 사용하는 currentRooms와 동기화하기 위해
+    // 여기서는 빈 Set으로 시작하고, setRooms 내부에서 실제 중복 체크를 수행
+    const existingRoomCorners = new Set();
     
     // 벽으로 완전히 둘러싸인 진짜 Room 감지
     const findRealRooms = () => {
-      console.log('🏠 벽으로 둘러싸인 진짜 Room 감지 시작');
-      
       // 1. 벽 연결 매핑 생성 (정확한 벽 존재 확인용)
       const wallConnections = new Set();
       walls.forEach(wall => {
@@ -487,11 +512,9 @@ export const ArchisketchProvider = ({ children }) => {
         }
       });
       
-      console.log('벽 연결 확인:', walls.map(w => `${w.corners[0]}-${w.corners[1]}`));
-      
       // 3. 벽으로만 이루어진 폐곡선 찾기
       const findWalledRooms = () => {
-        const foundRooms = [];
+        const localFoundRooms = [];
         const checkedPaths = new Set();
         
         const findRoomFromNode = (startNode, maxDepth = 15) => {
@@ -512,22 +535,21 @@ export const ArchisketchProvider = ({ children }) => {
                   const sortedPath = [...path].sort();
                   const pathKey = sortedPath.join(',');
                   
-                  if (!checkedPaths.has(pathKey) && !existingRoomCorners.has(pathKey)) {
+                  if (!checkedPaths.has(pathKey)) {
                     const positions = path.map(cornerId => {
                       const corner = corners.find(c => c.archiId === cornerId);
                       return { x: corner.position.x, z: corner.position.z };
                     });
                     const area = calculatePolygonArea(positions);
                     
-                    if (area > 500) {
-                      foundRooms.push({
+                    if (area > 10) {
+                      localFoundRooms.push({
                         corners: [...path],
                         area: area,
                         type: `${path.length}각형`,
                         key: pathKey
                       });
                       checkedPaths.add(pathKey);
-                      console.log(`🏠 진짜 Room 발견: ${path.length}각형 [${path.join(',')}] (면적: ${area})`);
                     }
                   }
                 }
@@ -546,8 +568,6 @@ export const ArchisketchProvider = ({ children }) => {
         
         // 벽 연결이 정확한지 확인하고 내부 분할 벽 체크하는 함수
         const validateRoomWalls = (roomPath) => {
-          console.log(`  🔍 Room 벽 검증: [${roomPath.join(',')}]`);
-          
           // 1. 경계 벽 존재 확인
           for (let i = 0; i < roomPath.length; i++) {
             const corner1 = roomPath[i];
@@ -556,10 +576,8 @@ export const ArchisketchProvider = ({ children }) => {
             const reverseKey = `${corner2}-${corner1}`;
             
             const hasWall = wallConnections.has(connectionKey) || wallConnections.has(reverseKey);
-            console.log(`    ${corner1} → ${corner2}: ${hasWall ? '✅ 벽 존재' : '❌ 벽 없음'}`);
             
             if (!hasWall) {
-              console.log(`    ❌ Room 무효: ${corner1}과 ${corner2} 사이에 벽이 없음`);
               return false;
             }
           }
@@ -567,19 +585,24 @@ export const ArchisketchProvider = ({ children }) => {
           // 2. 내부에 분할하는 대각선 벽이 있는지 확인
           const hasDividingWalls = checkForDividingWalls(roomPath);
           if (hasDividingWalls) {
-            console.log(`    ❌ Room 무효: 내부에 분할하는 벽이 존재함`);
             return false;
           }
           
-          console.log(`    ✅ Room 유효: 모든 연결이 벽이고 내부 분할 없음`);
           return true;
         };
         
-        // 내부 분할 벽이 있는지 확인하는 함수
+        /**
+         * 내부 분할 벽 검증 함수
+         * - 큰 룸에 내부 분할 벽(대각선 등)이 있으면 true 반환
+         * - 이 경우 큰 룸은 무효화되고, 분할 벽을 포함한 작은 룸들이 대신 생성됨
+         * 
+         * 예시:
+         * - 사각형 (A-B-C-D-A) 안에 대각선 벽 (A-C)이 있으면
+         * - 큰 사각형은 무효화되고, 삼각형 2개 (A-B-C-A, A-C-D-A)가 생성됨
+         */
         const checkForDividingWalls = (roomPath) => {
-          console.log(`    🔍 내부 분할 벽 검사: [${roomPath.join(',')}]`);
-          
           // Room의 모든 코너 조합에서 대각선/내부 벽 찾기
+          // 인접하지 않은 코너들 사이의 벽은 분할 벽으로 간주
           for (let i = 0; i < roomPath.length; i++) {
             for (let j = i + 2; j < roomPath.length; j++) {
               // 인접하지 않은 코너들 사이의 연결 확인
@@ -593,13 +616,11 @@ export const ArchisketchProvider = ({ children }) => {
               const hasDiagonalWall = wallConnections.has(connectionKey1) || wallConnections.has(connectionKey2);
               
               if (hasDiagonalWall) {
-                console.log(`    🚫 분할 벽 발견: ${corner1} - ${corner2}`);
                 return true;
               }
             }
           }
           
-          console.log(`    ✅ 분할 벽 없음`);
           return false;
         };
         
@@ -608,7 +629,7 @@ export const ArchisketchProvider = ({ children }) => {
           findRoomFromNode(corner.archiId);
         });
         
-        return foundRooms;
+        return localFoundRooms;
       };
       
       const validRooms = findWalledRooms();
@@ -622,11 +643,12 @@ export const ArchisketchProvider = ({ children }) => {
         if (!usedKeys.has(room.key)) {
           uniqueRooms.push(room);
           usedKeys.add(room.key);
-          foundRooms.push(room);
         }
       }
       
-      console.log(`${validRooms.length}개 벽으로 둘러싸인 영역 → ${uniqueRooms.length}개 유효한 Room`);
+      // foundRooms를 uniqueRooms로 대체
+      foundRooms.length = 0;
+      foundRooms.push(...uniqueRooms);
     };
     
     // 폴리곤 면적 계산 (Shoelace formula)
@@ -645,17 +667,54 @@ export const ArchisketchProvider = ({ children }) => {
     // 실제 Room 탐지 및 생성
     findRealRooms();
     
-    // 찾은 Room들을 실제로 생성 (이미 중복 제거됨)
-    foundRooms.forEach(roomData => {
-      console.log(`🏠 Room 생성: [${roomData.corners.join(',')}] (${roomData.type}, 면적: ${roomData.area})`);
-      const newRoom = addRoom(roomData.corners);
-      if (newRoom) {
-        console.log('✅ Room 생성 완료:', newRoom.archiId);
-      }
-    });
+    // 찾은 Room들의 키를 추출
+    const foundRoomKeys = new Set(
+      foundRooms.map(r => r.corners.slice().sort().join(','))
+    );
     
-    console.log(`총 ${foundRooms.length}개의 새로운 Room 생성`);
-  }, [corners, walls, rooms, addRoom]);
+    // 기존 rooms와 비교하여 추가/제거 결정 (setRooms 내부에서 현재 rooms 상태 사용)
+    setRooms(currentRooms => {
+      const existingRoomKeys = new Set(
+        currentRooms.map(r => r.corners.slice().sort().join(','))
+      );
+      
+      // 새로 추가할 Room들
+      const roomsToAdd = foundRooms.filter(roomData => {
+        const roomKey = roomData.corners.slice().sort().join(',');
+        return !existingRoomKeys.has(roomKey);
+      });
+      
+      // 제거할 Room들 (더 이상 존재하지 않는 룸)
+      const roomsToKeep = currentRooms.filter(room => {
+        const roomKey = room.corners.slice().sort().join(',');
+        return foundRoomKeys.has(roomKey);
+      });
+      
+      // 새 Room들 생성 및 추가
+      const newRooms = roomsToAdd.map(roomData => {
+        const cornerPoints = corners.filter(c => roomData.corners.includes(c.archiId));
+        if (cornerPoints.length !== roomData.corners.length) {
+          console.error('Room 생성 실패: 일부 모서리 포인트를 찾을 수 없습니다.', {
+            roomData: roomData.corners,
+            found: cornerPoints.length,
+            expected: roomData.corners.length
+          });
+          return null;
+        }
+        
+        const points2D = cornerPoints.map(corner => ({
+          x: corner.position.x,
+          z: corner.position.z
+        }));
+        const area = calculatePolygonArea(points2D);
+        const innerPoints = calculateInnerPoints(points2D);
+        
+        return createRoom(roomData.corners, innerPoints, area);
+      }).filter(Boolean);
+      
+      return [...roomsToKeep, ...newRooms];
+    });
+  }, [corners, walls, setRooms]); // rooms, addRoom 제거 - 무한 루프 방지
 
   // 벽이 추가되거나 변경될 때 자동으로 Room 감지
   useEffect(() => {
@@ -668,7 +727,13 @@ export const ArchisketchProvider = ({ children }) => {
       // 100ms 지연 후 감지 (상태 안정화 대기)
       const timer = setTimeout(() => {
         console.log('🚀 Room 감지 시작 (예약된 타이머)');
-        detectAndCreateRooms();
+        console.log('detectAndCreateRooms 함수 타입:', typeof detectAndCreateRooms);
+        console.log('detectAndCreateRooms 함수:', detectAndCreateRooms);
+        if (typeof detectAndCreateRooms === 'function') {
+          detectAndCreateRooms();
+        } else {
+          console.error('❌ detectAndCreateRooms가 함수가 아닙니다!', detectAndCreateRooms);
+        }
       }, 100);
       
       return () => {
@@ -680,7 +745,7 @@ export const ArchisketchProvider = ({ children }) => {
       // 모든 벽이 삭제되면 모든 Room도 삭제
       setRooms([]);
     }
-  }, [walls, detectAndCreateRooms]); // walls 전체 배열을 감지
+  }, [walls, detectAndCreateRooms]); // walls 배열 전체를 감지하여 확실하게 트리거
 
   // 방 업데이트
   const updateRoom = useCallback((archiId, updates) => {
