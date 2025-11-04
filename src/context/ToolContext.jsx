@@ -11,8 +11,8 @@ export const useTool = () => {
 };
 
 export const ToolProvider = ({ children }) => {
-  const [selectedTool, setSelectedTool] = useState("wall-drawing");
-  const [selectedMode, setSelectedMode] = useState("draw"); // "measure"에서 "draw"로 변경
+  const [selectedTool, setSelectedTool] = useState("cursor"); // 기본값을 cursor로 변경
+  const [selectedMode, setSelectedMode] = useState("select"); // 기본값을 select로 변경
   const [drawingMode, setDrawingMode] = useState("wall"); // "wall" | "room"
 
   const handleToolSelect = useCallback((toolId) => {
@@ -21,8 +21,12 @@ export const ToolProvider = ({ children }) => {
     // 도구에 따른 그리기 모드 설정
     if (toolId === "wall-drawing") {
       setDrawingMode("wall");
+      setSelectedMode("draw");
     } else if (toolId === "room-drawing") {
       setDrawingMode("room");
+      setSelectedMode("draw");
+    } else if (toolId === "cursor") {
+      setSelectedMode("select");
     }
     
     console.log("Selected tool:", toolId, "Drawing mode:", drawingMode);
@@ -37,6 +41,7 @@ export const ToolProvider = ({ children }) => {
   const value = {
     selectedTool,
     selectedMode,
+    drawingMode,
     handleToolSelect,
     handleModeSelect
   };

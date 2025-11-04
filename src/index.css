@@ -3,6 +3,23 @@
 @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap")
 layer(base);
 
+/* 3D 카드 효과를 위한 CSS */
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+.rotate-y-0 {
+  transform: rotateY(0deg);
+}
+
 
 /* @font-face {
     font-family: 'Moneygraphy';
@@ -320,16 +337,4 @@ layer(base);
   to {
     stroke-dashoffset: -10;
   }
-}
-
-/* 코너 원 호버 효과 */
-.corner-circle:hover {
-  filter: brightness(1.2);
-  transform: scale(1.1);
-}
-
-/* 드래그 중인 코너 */
-.corner-circle.dragging {
-  filter: brightness(1.5);
-  transform: scale(1.2);
 }

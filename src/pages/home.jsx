@@ -1,4 +1,5 @@
 import React from 'react'
+import Projects from '../components/Projects'
 
 const Home = () => {
   return (
@@ -147,6 +148,9 @@ const Home = () => {
           </table>
         </div>
       </div>
+      
+      {/* Projects Section */}
+      <Projects />
     </div>
   )
 }

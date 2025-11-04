@@ -7,25 +7,18 @@ const menuConfig = {
     title: "주요 도구",
     tools: [
       {
-        id: "drawing",
-        name: "그리기 도구",
+        id: "cursor",
+        name: "커서",
         icon: "cursor",
         shortcut: "V",
-        hasDropdown: true,
-        dropdownItems: [
-          {
-            id: "wall-drawing",
-            name: "벽그리기",
-            icon: "cursor",
-            shortcut: "V"
-          },
-          {
-            id: "room-drawing",
-            name: "방그리기",
-            icon: "grid",
-            shortcut: "R"
-          }
-        ]
+        hasDropdown: false
+      },
+      {
+        id: "wall-drawing",
+        name: "벽 그리기",
+        icon: "wall",
+        shortcut: "W",
+        hasDropdown: false
       },
       {
         id: "grid",
@@ -124,7 +117,7 @@ const IconComponent = ({ icon, size = 16 }) => {
   const icons = {
     cursor: (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-        <path d="M7 2l12 12-2 2L5 4l2-2z"/>
+        <path d="M7.5 2.5L19.5 14.5L17.5 16.5L5.5 4.5L7.5 2.5Z"/>
       </svg>
     ),
     grid: (
@@ -140,6 +133,11 @@ const IconComponent = ({ icon, size = 16 }) => {
     pen: (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
         <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+      </svg>
+    ),
+    wall: (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/>
       </svg>
     ),
     text: (
