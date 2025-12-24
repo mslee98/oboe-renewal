@@ -1,6 +1,6 @@
-import React, { Suspense, useEffect, useRef } from 'react';
+import React, { Suspense, useEffect, useRef, useState, useCallback } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, Grid, Environment } from '@react-three/drei';
+import { OrbitControls, Grid, Environment, TransformControls, PivotControls, Html, useCursor, Outlines } from '@react-three/drei';
 import { useArchisketch } from '../../context/ArchisketchContext';
 import { useScene } from '../../context/SceneContext';
 import Corner3D from './Corner3D';
@@ -84,6 +84,367 @@ const SceneGraphUpdater = ({ corners, walls, rooms }) => {
   return null;
 };
 
+// Canvas 클릭 이벤트를 처리하는 컴포넌트
+const CanvasClickHandler = () => {
+  const { camera, scene } = useThree();
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const mouseRef = useRef(new THREE.Vector2());
+  const { selectNode, isTransformEnding } = useScene();
+  const [hoveredObject, setHoveredObject] = useState(null);
+  
+  // 즉시적인 트랜스폼 종료 상태를 위한 ref
+  const isTransformEndingRef = useRef(false);
+
+  // TransformControls 관련 요소인지 확인하는 함수
+  const isTransformControlsElement = (object) => {
+    let current = object;
+    while (current.parent) {
+      if (current.type === 'TransformControls' || 
+          current.name.includes('TransformControls') ||
+          current.type === 'TransformControlsPlane' ||
+          current.type === 'TransformControlsGizmo') {
+        return true;
+      }
+      current = current.parent;
+    }
+    return false;
+  };
+
+  // 노드 타입 판별 함수
+  const getNodeType = (node) => {
+    if (node.isScene) return 'scene';
+    if (node.isGroup) return 'collection';
+    if (node.isMesh) return 'mesh';
+    if (node.isLight) return 'light';
+    if (node.isCamera) return 'camera';
+    if (node.isObject3D) return 'object';
+    // floorPlan 요소들
+    if (node.userData?.type === 'room') return 'room';
+    if (node.userData?.type === 'wall') return 'wall';
+    if (node.userData?.type === 'corner') return 'corner';
+    return 'unknown';
+  };
+
+  // 마우스 이동 이벤트 핸들러
+  const handleCanvasMouseMove = useCallback((event) => {
+    const rect = event.target.getBoundingClientRect();
+    mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycasterRef.current.setFromCamera(mouseRef.current, camera);
+    const intersects = raycasterRef.current.intersectObjects(scene.children, true);
+
+    if (intersects.length > 0) {
+      const validIntersect = intersects.find(intersect => 
+        !isTransformControlsElement(intersect.object)
+      );
+      
+      if (validIntersect) {
+        setHoveredObject(validIntersect.object);
+      } else {
+        setHoveredObject(null);
+      }
+    } else {
+      setHoveredObject(null);
+    }
+  }, [camera, scene]);
+
+  const handleCanvasClick = useCallback((event) => {
+    if (isTransformEndingRef.current) {
+      return;
+    }
+
+    const rect = event.target.getBoundingClientRect();
+    mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycasterRef.current.setFromCamera(mouseRef.current, camera);
+    const intersects = raycasterRef.current.intersectObjects(scene.children, true);
+
+    if (intersects.length > 0) {
+      const validIntersect = intersects.find(intersect => 
+        !isTransformControlsElement(intersect.object)
+      );
+      
+      if (validIntersect) {
+        const selectedObject = validIntersect.object;
+        
+        const nodeInfo = {
+          id: selectedObject.uuid,
+          name: selectedObject.name || 'Unnamed',
+          type: getNodeType(selectedObject),
+          position: {
+            x: selectedObject.position.x,
+            y: selectedObject.position.y,
+            z: selectedObject.position.z
+          },
+          rotation: {
+            x: selectedObject.rotation.x,
+            y: selectedObject.rotation.y,
+            z: selectedObject.rotation.z
+          },
+          scale: {
+            x: selectedObject.scale.x,
+            y: selectedObject.scale.y,
+            z: selectedObject.scale.z
+          }
+        };
+
+        selectNode(nodeInfo);
+      }
+    } else {
+      selectNode(null);
+    }
+  }, [camera, scene, selectNode]);
+
+  // 전역에서 트랜스폼 종료 상태를 설정할 수 있도록 window 객체에 함수 등록
+  useEffect(() => {
+    window.setTransformEndingRef = (ending) => {
+      isTransformEndingRef.current = ending;
+    };
+    return () => {
+      delete window.setTransformEndingRef;
+    };
+  }, []);
+
+  // Canvas에 이벤트 리스너 추가
+  useEffect(() => {
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+      canvas.addEventListener('click', handleCanvasClick);
+      canvas.addEventListener('mousemove', handleCanvasMouseMove);
+      
+      return () => {
+        canvas.removeEventListener('click', handleCanvasClick);
+        canvas.removeEventListener('mousemove', handleCanvasMouseMove);
+      };
+    }
+  }, [handleCanvasClick, handleCanvasMouseMove]);
+
+  // 호버 라벨 렌더링
+  if (!hoveredObject) return null;
+
+  const worldPosition = new THREE.Vector3();
+  hoveredObject.getWorldPosition(worldPosition);
+
+  return (
+    <Html 
+      position={[worldPosition.x, worldPosition.y, worldPosition.z]}
+      style={{ 
+        pointerEvents: 'none',
+        transform: 'translate(-50%, -100%)',
+        marginTop: '-10px'
+      }}
+    >
+      <div className="px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap shadow-lg border backdrop-blur-sm bg-white/90 dark:bg-gray-900/90 text-gray-900 dark:text-gray-100 border-gray-200/50 dark:border-gray-700/50">
+        <div className="flex items-center space-x-2">
+          <div className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400" />
+          <span className="font-semibold">
+            {hoveredObject.name || 'Unnamed Object'}
+          </span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100/50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-300">
+            {getNodeType(hoveredObject)}
+          </span>
+        </div>
+      </div>
+    </Html>
+  );
+};
+
+// TransformControls를 관리하는 컴포넌트
+const Controls = () => {
+  const { scene } = useThree();
+  const { 
+    selectedNode, 
+    transformMode, 
+    modes, 
+    updateNodePosition, 
+    updateNodeRotation,
+    updateNodeScale,
+    addToHistory,
+    setIsTransformEnding
+  } = useScene();
+  const [selectedObject, setSelectedObject] = useState(null);
+  const [isTransformActive, setIsTransformActive] = useState(false);
+  const [initialTransformState, setInitialTransformState] = useState(null);
+  const transformControlsRef = useRef(null);
+  const orbitControlsRef = useRef(null);
+
+  useCursor(isTransformActive ? 'grabbing' : 'default');
+
+  useEffect(() => {
+    if (selectedNode) {
+      const node = scene.getObjectByProperty('uuid', selectedNode.id);
+      setSelectedObject(node);
+    } else {
+      setSelectedObject(null);
+    }
+  }, [selectedNode, scene]);
+
+  const handleTransformStart = () => {
+    setIsTransformActive(true);
+    setIsTransformEnding(false);
+    
+    if (window.setTransformEndingRef) {
+      window.setTransformEndingRef(false);
+    }
+    
+    if (orbitControlsRef.current) {
+      orbitControlsRef.current.enabled = false;
+    }
+
+    if (selectedObject) {
+      setInitialTransformState({
+        position: { 
+          x: selectedObject.position.x, 
+          y: selectedObject.position.y, 
+          z: selectedObject.position.z 
+        },
+        rotation: { 
+          x: selectedObject.rotation.x, 
+          y: selectedObject.rotation.y, 
+          z: selectedObject.rotation.z 
+        },
+        scale: { 
+          x: selectedObject.scale.x, 
+          y: selectedObject.scale.y, 
+          z: selectedObject.scale.z 
+        }
+      });
+    }
+  };
+
+  const handleTransformEnd = () => {
+    if (window.setTransformEndingRef) {
+      window.setTransformEndingRef(true);
+    }
+    
+    setIsTransformActive(false);
+    
+    if (orbitControlsRef.current) {
+      orbitControlsRef.current.enabled = true;
+    }
+    
+    setTimeout(() => {
+      if (window.setTransformEndingRef) {
+        window.setTransformEndingRef(false);
+      }
+    }, 500);
+    
+    // Transform이 끝날 때 히스토리 저장
+    if (selectedObject && selectedNode && initialTransformState) {
+      const finalState = {
+        position: { 
+          x: selectedObject.position.x, 
+          y: selectedObject.position.y, 
+          z: selectedObject.position.z 
+        },
+        rotation: { 
+          x: selectedObject.rotation.x, 
+          y: selectedObject.rotation.y, 
+          z: selectedObject.rotation.z 
+        },
+        scale: { 
+          x: selectedObject.scale.x, 
+          y: selectedObject.scale.y, 
+          z: selectedObject.scale.z 
+        }
+      };
+      
+      const hasChanged = 
+        initialTransformState.position.x !== finalState.position.x ||
+        initialTransformState.position.y !== finalState.position.y ||
+        initialTransformState.position.z !== finalState.position.z ||
+        initialTransformState.rotation.x !== finalState.rotation.x ||
+        initialTransformState.rotation.y !== finalState.rotation.y ||
+        initialTransformState.rotation.z !== finalState.rotation.z ||
+        initialTransformState.scale.x !== finalState.scale.x ||
+        initialTransformState.scale.y !== finalState.scale.y ||
+        initialTransformState.scale.z !== finalState.scale.z;
+      
+      if (hasChanged) {
+        addToHistory({
+          type: 'transform',
+          nodeId: selectedNode.id,
+          beforeState: initialTransformState,
+          afterState: finalState,
+          timestamp: Date.now()
+        });
+      }
+      
+      setInitialTransformState(null);
+    }
+  };
+
+  const handleTransformChange = () => {
+    if (selectedObject && selectedNode && isTransformActive) {
+      // 벽이나 룸의 경우 y축 고정
+      const isWallOrRoom = selectedObject.userData?.type === 'wall' || selectedObject.userData?.type === 'room';
+      
+      if (isWallOrRoom && initialTransformState) {
+        // y축을 초기값으로 고정
+        selectedObject.position.y = initialTransformState.position.y;
+      }
+
+      updateNodePosition(selectedNode.id, {
+        x: selectedObject.position.x,
+        y: selectedObject.position.y,
+        z: selectedObject.position.z
+      });
+
+      updateNodeRotation(selectedNode.id, {
+        x: selectedObject.rotation.x,
+        y: selectedObject.rotation.y,
+        z: selectedObject.rotation.z
+      });
+
+      updateNodeScale(selectedNode.id, {
+        x: selectedObject.scale.x,
+        y: selectedObject.scale.y,
+        z: selectedObject.scale.z
+      });
+    }
+  };
+
+  // 벽이나 룸인지 확인
+  const isWallOrRoom = selectedObject?.userData?.type === 'wall' || selectedObject?.userData?.type === 'room';
+
+  return (
+    <>
+      {selectedObject && (
+        <TransformControls
+          ref={transformControlsRef}
+          object={selectedObject}
+          mode={modes[transformMode]}
+          rotationSnap={Math.PI / 12}
+          onMouseDown={handleTransformStart}
+          onMouseUp={handleTransformEnd}
+          onChange={handleTransformChange}
+          size={1.2}
+          showX={true}
+          showY={!isWallOrRoom} // 벽과 룸은 Y축 숨김
+          showZ={true}
+          translationLimits={isWallOrRoom ? {
+            minY: selectedObject.position.y,
+            maxY: selectedObject.position.y
+          } : undefined}
+        />
+      )}
+
+      <OrbitControls 
+        ref={orbitControlsRef}
+        makeDefault
+        enablePan={!isTransformActive}
+        enableZoom={!isTransformActive}
+        enableRotate={!isTransformActive}
+        maxPolarAngle={Math.PI / 2.2}
+        minDistance={5}
+        maxDistance={200}
+      />
+    </>
+  );
+};
+
 const Interior3D = () => {
   const { corners, walls, rooms } = useArchisketch();
 
@@ -149,14 +510,11 @@ const Interior3D = () => {
             <Corner3D key={corner.archiId} corner={corner} />
           ))} */}
 
-          <OrbitControls
-            enablePan={true}
-            enableZoom={true}
-            enableRotate={true}
-            maxPolarAngle={Math.PI / 2.2}
-            minDistance={5}
-            maxDistance={200}
-          />
+          {/* Canvas 클릭 핸들러 */}
+          <CanvasClickHandler />
+
+          {/* TransformControls 및 OrbitControls */}
+          <Controls />
         </Suspense>
       </Canvas>
 

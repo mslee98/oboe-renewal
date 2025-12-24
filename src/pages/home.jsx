@@ -150,7 +150,7 @@ const Home = () => {
       </div>
       
       {/* Projects Section */}
-      <Projects />
+      {/* <Projects /> */}
     </div>
   )
 }
