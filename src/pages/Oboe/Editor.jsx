@@ -553,7 +553,7 @@ const Controls = () => {
         updateNodePosition, 
         updateNodeScale, 
         addToHistory,
-        setTransformEnding
+        setIsTransformEnding
     } = useScene();
     const [selectedObject, setSelectedObject] = useState(null);
     const [isTransformActive, setIsTransformActive] = useState(false); // 주석 해제
@@ -578,7 +578,7 @@ const Controls = () => {
     const handleTransformStart = () => {
         console.log('=== TRANSFORM START ===');
         setIsTransformActive(true); // 주석 해제
-        setTransformEnding(false);
+        setIsTransformEnding(false);
         
         // 즉시적인 트랜스폼 종료 상태 해제
         if (window.setTransformEndingRef) {
